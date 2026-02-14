@@ -1,360 +1,186 @@
-/*
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
+import 'package:intl/intl.dart';
 import 'package:seawatch/models/avvistamento.dart';
 import 'package:seawatch/screens/avvistamenti/AvvistamentoDetailsPage.dart';
 import 'package:seawatch/screens/avvistamenti/NuovoAvvistamentoScreen.dart';
+import 'package:seawatch/services/sightings/sightings_repository.dart';
 
 class AvvistamentiScreen extends StatefulWidget {
+  const AvvistamentiScreen({super.key});
+
   @override
-  _AvvistamentiScreenState createState() => _AvvistamentiScreenState();
+  State<AvvistamentiScreen> createState() => _AvvistamentiScreenState();
 }
 
 class _AvvistamentiScreenState extends State<AvvistamentiScreen> {
-  late Future<List<Avvistamento>> _futureAvvistamenti;
-  List<Avvistamento>? _avvistamenti; // Lista locale
+  final _repository = SightingsRepository.instance;
+
+  bool _loading = true;
+  String? _error;
+  List<Avvistamento> _sightings = const [];
 
   @override
   void initState() {
     super.initState();
-    _futureAvvistamenti = fetchAvvistamenti();
+    _load(forceRefresh: true);
   }
 
-  void _sortAvvistamentiByDate({required bool ascending}) {
-    if (_avvistamenti != null) {
+  Future<void> _load({bool forceRefresh = false}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final sightings = await _repository.getSightings(forceRefresh: forceRefresh);
+      if (!mounted) {
+        return;
+      }
       setState(() {
-        _avvistamenti!.sort((a, b) {
-          final dateA = DateTime.parse(a.data);
-          final dateB = DateTime.parse(b.data);
-          return ascending ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
-        });
+        _sightings = sightings;
       });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
-
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: Text("Lista Avvistamenti"),
-      backgroundColor: Colors.blue.shade800,
-      actions: [
-        IconButton(
-          icon: Icon(Icons.add),
-          onPressed: () {
-            // Aggiunge un nuovo avvistamento
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    NuovoAvvistamentoScreen(userEmail: 'thomas.testa@studio.unibo.it'),
-              ),
-            ).then((newAvvistamento) {
-              if (newAvvistamento != null) {
-                setState(() {
-                  _avvistamenti?.add(newAvvistamento);
-                  _sortAvvistamentiByDate(ascending: false); // Riordina se necessario
-                });
-              }
-            });
-          },
-        ),
-      ],
-    ),
-    body: FutureBuilder<List<Avvistamento>>(
-      future: _futureAvvistamenti,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(color: Colors.blue),
-                const SizedBox(height: 10),
-                const Text("Caricamento avvistamenti...",
-                    style: TextStyle(fontSize: 16, color: Colors.grey)),
-              ],
-            ),
-          );
-        } else if (snapshot.hasError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, color: Colors.red, size: 40),
-                const SizedBox(height: 10),
-                Text("Errore: ${snapshot.error}",
-                    style: TextStyle(fontSize: 16, color: Colors.red)),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () => fetchAvvistamenti(),
-                  child: Text("Riprova"),
-                ),
-              ],
-            ),
-          );
-        } else if (snapshot.hasData) {
-          // Salva i dati solo al primo caricamento
-          if (_avvistamenti == null) {
-            _avvistamenti = snapshot.data!;
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80.0),
-            itemCount: _avvistamenti!.length,
-            itemBuilder: (context, index) {
-              final avvistamento = _avvistamenti![index];
-              return Card(
-                elevation: 4,
-                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.blue.shade100,
-                    child: Icon(Icons.pets, color: Colors.blue.shade800),
-                  ),
-                  title: Text(
-                    "Animale: ${avvistamento.animale}",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text("Data: ${avvistamento.data}"),
-                  trailing:
-                      Icon(Icons.arrow_forward, color: Colors.blue.shade800),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AvvistamentoDetailsPage(
-                          avvistamento: avvistamento,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              );
-            },
-          );
-        } else {
-          return Center(child: Text("Nessun avvistamento trovato."));
-        }
-      },
-    ),
-  );
-}
-
-
-
-
-
-Future<List<Avvistamento>> fetchAvvistamenti() async {
-  const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php'; // Modifica con il tuo URL
-
-  final response = await http.post(
-    Uri.parse(url),
-    body: {'request': 'tbl_avvistamenti'},
-  );
-
-  if (response.statusCode == 200) {
-    final List<dynamic> jsonResponse = json.decode(response.body);
-
-    // Converte i dati JSON in una lista di oggetti Avvistamento
-    return jsonResponse.map((data) => Avvistamento.fromJson(data)).toList();
-  } else {
-    throw Exception('Errore nel recupero degli avvistamenti');
-  }
-}
-}
-*/
-
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-import 'package:seawatch/models/avvistamento.dart';
-import 'package:seawatch/screens/avvistamenti/AvvistamentoDetailsPage.dart';
-import 'package:seawatch/screens/avvistamenti/NuovoAvvistamentoScreen.dart';
-
-class AvvistamentiScreen extends StatefulWidget {
-  @override
-  _AvvistamentiScreenState createState() => _AvvistamentiScreenState();
-}
-
-class _AvvistamentiScreenState extends State<AvvistamentiScreen> {
-  late Future<List<Avvistamento>> _futureAvvistamenti;
-  List<Avvistamento>? _avvistamenti;
-
-  @override
-  void initState() {
-    super.initState();
-    _futureAvvistamenti = fetchAvvistamenti();
-  }
-
-  void _sortAvvistamentiByDate({required bool ascending}) {
-    if (_avvistamenti != null) {
-      setState(() {
-        _avvistamenti!.sort((a, b) {
-          final dateA = DateTime.parse(a.data);
-          final dateB = DateTime.parse(b.data);
-          return ascending ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
-        });
-      });
+  String _syncLabel(SyncState state) {
+    switch (state) {
+      case SyncState.pendingCreate:
+        return 'Creazione in coda';
+      case SyncState.pendingUpdate:
+        return 'Modifica in coda';
+      case SyncState.pendingDelete:
+        return 'Eliminazione in coda';
+      case SyncState.synced:
+        return '';
     }
+  }
+
+  String _formatDate(String iso) {
+    final date = DateTime.tryParse(iso);
+    if (date == null) {
+      return '-';
+    }
+    return DateFormat('dd/MM/yyyy HH:mm').format(date.toLocal());
   }
 
   @override
   Widget build(BuildContext context) {
-        final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
-title: Align(
-  alignment: Alignment.centerLeft,
-  child: Text(
-    "Lista Avvistamenti",
-    style: TextStyle(
-      fontWeight: FontWeight.bold,
-      fontSize: 22,
-      color: Colors.black,
-    ),
-  ),
-),
-
-        backgroundColor: theme.colorScheme.primary,
-        centerTitle: true,
-        elevation: 4,
+        title: const Text('Avvistamenti'),
         actions: [
           IconButton(
-            icon: Icon(Icons.add, size: 28),
-            tooltip: "Aggiungi Avvistamento",
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      NuovoAvvistamentoScreen(userEmail: 'thomas.testa@studio.unibo.it'),
-                ),
-              ).then((newAvvistamento) {
-                if (newAvvistamento != null) {
-                  setState(() {
-                    _avvistamenti?.add(newAvvistamento);
-                    _sortAvvistamentiByDate(ascending: false);
-                  });
-                }
-              });
-            },
+            onPressed: _loading ? null : () => _load(forceRefresh: true),
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Aggiorna lista',
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blue.shade100, Colors.white],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => NuovoAvvistamentoScreen()),
+          );
+
+          if (!mounted) {
+            return;
+          }
+
+          await _load();
+        },
+        label: const Text('Nuovo'),
+        icon: const Icon(Icons.add),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () => _load(forceRefresh: true),
+                child: const Text('Riprova'),
+              ),
+            ],
           ),
         ),
-        child: FutureBuilder<List<Avvistamento>>(
-          future: _futureAvvistamenti,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: Colors.blue),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "Caricamento avvistamenti...",
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                  ],
+      );
+    }
+
+    if (_sightings.isEmpty) {
+      return const Center(child: Text('Nessun avvistamento disponibile'));
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _load(forceRefresh: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.only(bottom: 80),
+        itemCount: _sightings.length,
+        separatorBuilder: (_, __) => const Divider(height: 0),
+        itemBuilder: (context, index) {
+          final sighting = _sightings[index];
+          final syncLabel = _syncLabel(sighting.syncState);
+
+          return ListTile(
+            leading: CircleAvatar(
+              child: Text(sighting.numeroEsemplari.toString()),
+            ),
+            title: Text(sighting.specie ?? sighting.animale),
+            subtitle: Text(
+              '${_formatDate(sighting.data)}\n'
+              '${sighting.user.email}\n'
+              '${sighting.latitudine.toStringAsFixed(5)}, '
+              '${sighting.longitudine.toStringAsFixed(5)}'
+              '${syncLabel.isEmpty ? '' : '\n$syncLabel'}',
+            ),
+            isThreeLine: true,
+            trailing: sighting.isPending
+                ? const Icon(Icons.cloud_upload, color: Colors.orange)
+                : const Icon(Icons.chevron_right),
+            onTap: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AvvistamentoDetailsPage(avvistamento: sighting),
                 ),
               );
-            } else if (snapshot.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline, color: Colors.red, size: 40),
-                    const SizedBox(height: 10),
-                    Text(
-                      "Errore: ${snapshot.error}",
-                      style: TextStyle(fontSize: 16, color: Colors.red),
-                    ),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: () => setState(() {
-                        _futureAvvistamenti = fetchAvvistamenti();
-                      }),
-                      child: Text("Riprova"),
-                    ),
-                  ],
-                ),
-              );
-            } else if (snapshot.hasData) {
-              if (_avvistamenti == null) {
-                _avvistamenti = snapshot.data!;
+
+              if (!mounted) {
+                return;
               }
 
-              return ListView.builder(
-                padding: const EdgeInsets.only(bottom: 80.0),
-                itemCount: _avvistamenti!.length,
-                itemBuilder: (context, index) {
-                  final avvistamento = _avvistamenti![index];
-                  return Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.blue.shade100,
-                        child: Icon(Icons.pets, color: Colors.blue.shade800),
-                      ),
-                      title: Text(
-                        "Animale: ${avvistamento.animale}",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text("Data: ${avvistamento.data}"),
-                      trailing: Icon(Icons.arrow_forward, color: Colors.blue.shade800),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AvvistamentoDetailsPage(
-                              avvistamento: avvistamento,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              );
-            } else {
-              return Center(child: Text("Nessun avvistamento trovato."));
-            }
-          },
-        ),
+              await _load();
+            },
+          );
+        },
       ),
     );
   }
-
-  Future<List<Avvistamento>> fetchAvvistamenti() async {
-    const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php';
-
-    final response = await http.post(
-      Uri.parse(url),
-      body: {'request': 'tbl_avvistamenti'},
-    );
-
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonResponse = json.decode(response.body);
-      return jsonResponse.map((data) => Avvistamento.fromJson(data)).toList();
-    } else {
-      throw Exception('Errore nel recupero degli avvistamenti');
-    }
-  }
 }
-
-

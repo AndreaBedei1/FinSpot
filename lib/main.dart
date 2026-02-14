@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:seawatch/screens/MainScreen.dart';
 import 'package:seawatch/screens/authentication/LoginScreen.dart';
@@ -7,9 +8,12 @@ import 'package:seawatch/screens/settingScreens/SettingsScreen.dart';
 import 'package:seawatch/services/AuthServiceGeneral/AuthService.dart';
 import 'package:seawatch/services/ManagementTheme/ThemeProvider.dart';
 
-
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.manual,
+    overlays: SystemUiOverlay.values,
+  );
 
   final authService = AuthService();
   final isAuthenticated = await authService.checkSession();
@@ -17,7 +21,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
       child: MyApp(isAuthenticated: isAuthenticated),
     ),
@@ -25,9 +29,9 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  final bool isAuthenticated;
+  const MyApp({super.key, required this.isAuthenticated});
 
-  const MyApp({Key? key, required this.isAuthenticated}) : super(key: key);
+  final bool isAuthenticated;
 
   @override
   Widget build(BuildContext context) {
@@ -36,47 +40,11 @@ class MyApp extends StatelessWidget {
       theme: Provider.of<ThemeProvider>(context).currentTheme,
       initialRoute: isAuthenticated ? '/main' : '/login',
       routes: {
-        '/login': (context) => const LoginScreen(),
-        '/registrazione': (context) => RegistrationScreen(),
-        '/main': (context) => const MainScreen(),
-        '/settings': (context) => const SettingsScreen(),
+        '/login': (_) => const LoginScreen(),
+        '/registrazione': (_) => const RegistrationScreen(),
+        '/main': (_) => const MainScreen(),
+        '/settings': (_) => const SettingsScreen(),
       },
     );
   }
 }
-
-/*
-NOTA: gestire cambia foto e/o nome e cognome separatemnete se non si riesce a cambiare insieme (chiama due funzioni diverse)
-//senza internet disabilitare il pulsanate tanto non serve cambiare il profilo 
-
-senza connesione io devo salavare gli avvistamenti in locale 
-Chaimo addImageProfileMob in Single APi passandogli la mail come request 
-
-Per avvsoatemnti singolo AddImage in singke Api (id avvistamento come request)
-
-setUseriNFOMob PER CMABAIARE nome e cognome profilo (EMAIL, nome e cognome)
-
-asterisci = obbligatori 
-
-data prende la propria in automctaica ricoridaris di cmabaiare il fromato 
-
-latituidne e longitudine gps attuale 
-
-nuovo avvsiatmento senza imagine, 
-ottemgo l'id che è il timestamp se è andata utto bene 
-l'avvistamento può avere più immagini, massimo 5, e vanno caricate ad una ad una 
-[si può fare tutti insieme basta che funziona tutto a step]
-
-la password nuova è criptata con la stessa key precdente 
-*/
-
-/*
-Cosde da fare ancora : sono la gestioen del cambio password, nome e cognome 
-gestioen dell'immagine 
-gestione oglgine del dispositivo
-*/
-
-
-//aggiungere sfumatura card homepage
-
-//paassword provathom

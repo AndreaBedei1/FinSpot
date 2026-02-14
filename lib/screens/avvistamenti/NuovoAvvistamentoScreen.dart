@@ -1,670 +1,693 @@
-/*
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
-import 'dart:convert';
 import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:seawatch/models/avvistamento.dart';
+import 'package:seawatch/services/sightings/sightings_repository.dart';
 
 class NuovoAvvistamentoScreen extends StatefulWidget {
-  final String userEmail;
+  const NuovoAvvistamentoScreen({super.key, this.userEmail});
 
-  NuovoAvvistamentoScreen({required this.userEmail});
+  final String? userEmail;
 
   @override
-  _NuovoAvvistamentoScreenState createState() => _NuovoAvvistamentoScreenState();
+  State<NuovoAvvistamentoScreen> createState() =>
+      _NuovoAvvistamentoScreenState();
 }
 
 class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
+  static const _settingsChannel =
+      MethodChannel('it.unibo.csr.seawatch/device_settings');
+
   final _formKey = GlobalKey<FormState>();
+  final _repository = SightingsRepository.instance;
+  final _picker = ImagePicker();
 
-  // Controller per i campi di input
-  final TextEditingController _esemplariController = TextEditingController();
-  final TextEditingController _latitudeController = TextEditingController();
-  final TextEditingController _longitudeController = TextEditingController();
-  final TextEditingController _mareController = TextEditingController();
-  final TextEditingController _ventoController = TextEditingController();
-  final TextEditingController _noteController = TextEditingController();
+  final _specimensController = TextEditingController();
+  final _latitudeController = TextEditingController();
+  final _longitudeController = TextEditingController();
+  final _notesController = TextEditingController();
 
-  bool _isSaving = false;
+  final List<File> _images = [];
 
-  // Per gestione immagini
-  List<File> _images = [];
-  final ImagePicker _picker = ImagePicker();
+  List<AnimalOption> _animals = const [];
+  List<SpeciesOption> _species = const [];
 
-  // Variabili per la selezione di animale e specie
-  String? _selectedAnimale;
-  String? _selectedSpecie;
+  int? _selectedAnimalId;
+  int? _selectedSpeciesId;
+  String? _selectedSea;
+  String? _selectedWind;
 
-  List<String> animali = ['Delfino', 'Balena', 'Squalo', 'Tartaruga']; // Esempio
-  Map<String, List<String>> specieMap = {
-    'Delfino': ['Tursiope', 'Stenella'],
-    'Balena': ['Balena Blu', 'Capodoglio'],
-    'Squalo': ['Squalo Bianco', 'Squalo Martello'],
-    'Tartaruga': ['Caretta', 'Liuto'],
-  };
+  bool _loadingAnimals = true;
+  bool _saving = false;
+  bool _loadingLocation = false;
+  bool _dirty = false;
+  bool _allowPop = false;
 
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+  static const _seaOptions = [
+    'Calmo',
+    'Poco mosso',
+    'Mosso',
+    'Molto mosso',
+    'Agitato',
+  ];
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return;
-    }
+  static const _windOptions = [
+    'Assente',
+    'Debole',
+    'Moderato',
+    'Forte',
+    'Tempesta',
+  ];
 
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.deniedForever) {
-        return;
-      }
-    }
-
-    Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    setState(() {
-      _latitudeController.text = position.latitude.toString();
-      _longitudeController.text = position.longitude.toString();
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadAnimals();
   }
 
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
-    if (pickedFile != null && _images.length < 5) {
+  @override
+  void dispose() {
+    _specimensController.dispose();
+    _latitudeController.dispose();
+    _longitudeController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAnimals() async {
+    setState(() {
+      _loadingAnimals = true;
+    });
+
+    try {
+      final animals = await _repository.getAnimals(forceRefresh: true);
+      await _repository.getSpecies(forceRefresh: true);
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
-        _images.add(File(pickedFile.path));
+        _animals = animals;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore caricando animali: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingAnimals = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadSpeciesForAnimal(int animalId) async {
+    try {
+      final species = await _repository.getSpecies(
+        animalId: animalId,
+        forceRefresh: true,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _species = species;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _species = const [];
       });
     }
   }
 
-  // Funzione per salvare l'avvistamento
-  Future<void> _saveAvvistamento() async {
-    if (!_formKey.currentState!.validate()) return;
+  void _markDirty() {
+    if (_dirty) {
+      return;
+    }
+    setState(() {
+      _dirty = true;
+    });
+  }
 
-    // Validazione dei campi obbligatori
-    if (_esemplariController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Inserisci il numero di esemplari.")));
+  void _showInfo(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<bool> _confirmDiscardChanges() async {
+    if (!_dirty || _saving) {
+      return true;
+    }
+
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Modifiche non salvate'),
+          content: const Text('Vuoi uscire senza salvare questo avvistamento?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Continua a modificare'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Esci senza salvare'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return discard == true;
+  }
+
+  Future<void> _handlePopAttempt() async {
+    if (_saving) {
       return;
     }
 
-    if (_latitudeController.text.isEmpty || _longitudeController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Inserisci la posizione.")));
+    final canLeave = await _confirmDiscardChanges();
+    if (!canLeave || !mounted) {
       return;
     }
 
-    setState(() => _isSaving = true);
-
-    const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php';
-
-    final body = {
-      'request': 'saveAvvMob',
-      'idd': '0',
-      'user': widget.userEmail,
-      'data': DateTime.now().toIso8601String(),
-      'esemplari': _esemplariController.text,
-      'latitudine': _latitudeController.text,
-      'longitudine': _longitudeController.text,
-      'specie': _selectedAnimale ?? '',
-      'sottospecie': _selectedSpecie ?? '',
-      'mare': _mareController.text,
-      'vento': _ventoController.text,
-      'note': _noteController.text,
-    };
-
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse(url))..fields.addAll(body);
-
-      // Invia solo l'avvistamento senza le immagini per ottenere l'ID
-      var response = await request.send();
-
-      if (response.statusCode == 200) {
-        final responseBody = await response.stream.bytesToString();
-        final responseJson = jsonDecode(responseBody);
-
-        // Se l'ID dell'avvistamento è restituito correttamente
-        final avvistamentoId = responseJson['avvistamentoId']; // Supponiamo che l'ID venga restituito così
-
-        // Ora che abbiamo l'ID, associamo le immagini
-        if (_images.isNotEmpty && avvistamentoId != null) {
-          await _uploadImages(avvistamentoId);
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Avvistamento salvato con successo!")));
-        Navigator.pop(context, true);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore nel salvataggio.")));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore di rete: $e")));
-    } finally {
-      setState(() => _isSaving = false);
-    }
+    setState(() {
+      _allowPop = true;
+    });
+    Navigator.of(context).pop();
   }
 
-  // Funzione per caricare le immagini
-  Future<void> _uploadImages(String avvistamentoId) async {
-    const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php';
-
-    try {
-      for (var image in _images) {
-        var request = http.MultipartRequest('POST', Uri.parse(url));
-        request.fields['request'] = 'uploadImage';
-        request.fields['avvistamentoId'] = avvistamentoId;
-        request.files.add(await http.MultipartFile.fromPath('image', image.path, contentType: MediaType('image', 'jpeg')));
-        
-        var response = await request.send();
-
-        if (response.statusCode == 200) {
-          print("Immagine caricata con successo.");
-        } else {
-          print("Errore nel caricamento dell'immagine.");
-        }
-      }
-    } catch (e) {
-      print("Errore di rete durante il caricamento delle immagini: $e");
+  Future<void> _pickImage(ImageSource source) async {
+    if (_images.length >= 5) {
+      _showInfo('Massimo 5 immagini per avvistamento.');
+      return;
     }
+
+    final picked = await _picker.pickImage(source: source, imageQuality: 85);
+    if (picked == null) {
+      return;
+    }
+
+    setState(() {
+      _images.add(File(picked.path));
+    });
+    _markDirty();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Nuovo Avvistamento"), backgroundColor: Colors.blue.shade800),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
+  Future<void> _chooseImageSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Numero esemplari
-              TextFormField(
-                controller: _esemplariController,
-                decoration: InputDecoration(labelText: "Numero di esemplari"),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return "Inserisci il numero di esemplari.";
-                  }
-                  return null;
-                },
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Scatta foto'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
               ),
-              SizedBox(height: 16),
-              
-              // Posizione GPS (è obbligatoria)
-              ElevatedButton(onPressed: _getCurrentLocation, child: Text("Ottieni Posizione GPS")),
-              SizedBox(height: 16),
-              
-              // Animale (opzionale)
-              DropdownButtonFormField(
-                value: _selectedAnimale,
-                items: animali.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) => setState(() => _selectedAnimale = val as String?),
-                decoration: InputDecoration(labelText: "Animale"),
-              ),
-              SizedBox(height: 16),
-              
-              // Specie (opzionale)
-              DropdownButtonFormField(
-                value: _selectedSpecie,
-                items: (_selectedAnimale != null ? specieMap[_selectedAnimale] ?? [] : []).map((e) {
-                  return DropdownMenuItem(value: e, child: Text(e));
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedSpecie = val as String?),
-                decoration: InputDecoration(labelText: "Specie"),
-              ),
-              SizedBox(height: 16),
-              
-              // Mare (opzionale)
-              TextFormField(
-                controller: _mareController,
-                decoration: InputDecoration(labelText: "Mare"),
-              ),
-              SizedBox(height: 16),
-              
-              // Vento (opzionale)
-              TextFormField(
-                controller: _ventoController,
-                decoration: InputDecoration(labelText: "Vento"),
-              ),
-              SizedBox(height: 16),
-              
-              // Note (opzionali)
-              TextFormField(
-                controller: _noteController,
-                decoration: InputDecoration(labelText: "Note"),
-              ),
-              SizedBox(height: 16),
-              
-              // Selezione immagine (opzionale)
-              ElevatedButton(onPressed: _pickImage, child: Text("Seleziona Immagine")),
-              Wrap(children: _images.map((img) => Image.file(img, height: 100)).toList()),
-              SizedBox(height: 16),
-              
-              // Bottone per salvare l'avvistamento
-              ElevatedButton(
-                onPressed: _isSaving ? null : _saveAvvistamento, 
-                child: _isSaving ? CircularProgressIndicator() : Text("Salva Avvistamento")
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Scegli dalla galleria'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
+
+    if (source != null) {
+      await _pickImage(source);
+    }
   }
-}
 
-*/
-
-/*
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-import 'package:seawatch/screens/avvistamenti/AggiungiImmaginiScreen.dart';
-
-class NuovoAvvistamentoScreen extends StatefulWidget {
-  final String userEmail;
-
-  NuovoAvvistamentoScreen({required this.userEmail});
-
-  @override
-  _NuovoAvvistamentoScreenState createState() => _NuovoAvvistamentoScreenState();
-}
-
-class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
-  final _formKey = GlobalKey<FormState>();
-
-  // Controller per i campi di input
-  final TextEditingController _esemplariController = TextEditingController();
-  final TextEditingController _latitudeController = TextEditingController();
-  final TextEditingController _longitudeController = TextEditingController();
-  final TextEditingController _mareController = TextEditingController();
-  final TextEditingController _ventoController = TextEditingController();
-  final TextEditingController _noteController = TextEditingController();
-
-  bool _isSaving = false;
-
-  // Variabili per la selezione di animale e specie
-  String? _selectedAnimale;
-  String? _selectedSpecie;
-
-  List<String> animali = ['Delfino', 'Balena', 'Squalo', 'Tartaruga']; // Esempio
-  Map<String, List<String>> specieMap = {
-    'Delfino': ['Tursiope', 'Stenella'],
-    'Balena': ['Balena Blu', 'Capodoglio'],
-    'Squalo': ['Squalo Bianco', 'Squalo Martello'],
-    'Tartaruga': ['Caretta', 'Liuto'],
-  };
-
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return;
+  Future<bool> _openLocationActivation() async {
+    if (!Platform.isAndroid) {
+      return Geolocator.openLocationSettings();
     }
 
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.deniedForever) {
+    try {
+      final opened =
+          await _settingsChannel.invokeMethod<bool>('openLocationActivation');
+      if (opened == true) {
+        return true;
+      }
+    } catch (_) {
+      // fallback below
+    }
+
+    return Geolocator.openLocationSettings();
+  }
+
+  Future<void> _getCurrentLocation({bool markAsDirty = false}) async {
+    setState(() {
+      _loadingLocation = true;
+    });
+
+    try {
+      var enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        final opened = await _openLocationActivation();
+        if (!opened) {
+          _showInfo('Attiva la posizione dalle impostazioni del dispositivo.');
+          return;
+        }
+
+        enabled = await Geolocator.isLocationServiceEnabled();
+        if (!enabled) {
+          _showInfo('Posizione ancora disattivata. Attivala e riprova.');
+        }
         return;
       }
-    }
 
-    Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    setState(() {
-      _latitudeController.text = position.latitude.toString();
-      _longitudeController.text = position.longitude.toString();
-    });
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        _showInfo(
+            'Permesso posizione negato. Concedi il permesso per continuare.');
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        final opened = await Geolocator.openAppSettings();
+        if (!opened) {
+          _showInfo(
+              'Attiva il permesso posizione nelle impostazioni dell\'app.');
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _latitudeController.text = position.latitude.toStringAsFixed(6);
+        _longitudeController.text = position.longitude.toStringAsFixed(6);
+      });
+      if (markAsDirty) {
+        _markDirty();
+      }
+    } catch (_) {
+      _showInfo('Impossibile ottenere la posizione in questo momento.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingLocation = false;
+        });
+      }
+    }
   }
 
-  // Funzione per salvare l'avvistamento senza immagine
-  Future<void> _saveAvvistamento() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    // Validazione dei campi obbligatori
-    if (_esemplariController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Inserisci il numero di esemplari.")));
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (_latitudeController.text.isEmpty || _longitudeController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Inserisci la posizione.")));
+    if (_selectedAnimalId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seleziona un animale.')),
+      );
       return;
     }
 
-    setState(() => _isSaving = true);
+    final specimens = int.tryParse(_specimensController.text.trim());
+    final latitude = double.tryParse(_latitudeController.text.trim());
+    final longitude = double.tryParse(_longitudeController.text.trim());
 
-    const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php';
+    if (specimens == null || specimens <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Numero esemplari non valido.')),
+      );
+      return;
+    }
 
-    final body = {
-      'request': 'saveAvvMob',
-      'idd': '0',
-      'user': widget.userEmail,
-      'data': DateTime.now().toIso8601String(),
-      'esemplari': _esemplariController.text,
-      'latitudine': _latitudeController.text,
-      'longitudine': _longitudeController.text,
-      'specie': _selectedAnimale ?? '',
-      'sottospecie': _selectedSpecie ?? '',
-      'mare': _mareController.text,
-      'vento': _ventoController.text,
-      'note': _noteController.text,
-    };
+    if (latitude == null || longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Coordinate non valide.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+    });
 
     try {
-      var request = http.MultipartRequest('POST', Uri.parse(url))..fields.addAll(body);
+      final created = await _repository.createSighting(
+        CreateSightingInput(
+          date: DateTime.now(),
+          specimens: specimens,
+          latitude: latitude,
+          longitude: longitude,
+          animalId: _selectedAnimalId!,
+          speciesId: _selectedSpeciesId,
+          sea: _selectedSea,
+          wind: _selectedWind,
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
+        ),
+        imagePaths: _images.map((e) => e.path).toList(),
+      );
 
-      var response = await request.send();
-
-      if (response.statusCode == 200) {
-        final responseBody = await response.stream.bytesToString();
-        final responseJson = jsonDecode(responseBody);
-
-        final avvistamentoId = responseJson['avvistamentoId']; // Supponiamo che l'ID venga restituito così
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Avvistamento salvato con successo!")));
-        
-        // Naviga alla schermata per aggiungere le immagini
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AggiungiImmaginiScreen(avvistamentoId: avvistamentoId),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore nel salvataggio.")));
+      if (!mounted) {
+        return;
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore di rete: $e")));
+
+      final offline = created.syncState == SyncState.pendingCreate;
+      _showInfo(
+        offline
+            ? 'Salvato in locale. Sincronizzazione in coda quando torna la rete.'
+            : 'Avvistamento salvato con successo.',
+      );
+
+      _dirty = false;
+
+      Navigator.pop(context, created);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Errore salvataggio: $error'),
+        ),
+      );
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Nuovo Avvistamento"), backgroundColor: Colors.blue.shade800),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              // Numero esemplari
-              TextFormField(
-                controller: _esemplariController,
-                decoration: InputDecoration(labelText: "Numero di esemplari"),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return "Inserisci il numero di esemplari.";
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              
-              // Posizione GPS (è obbligatoria)
-              ElevatedButton(onPressed: _getCurrentLocation, child: Text("Ottieni Posizione GPS")),
-              SizedBox(height: 16),
-              
-              // Animale (opzionale)
-              DropdownButtonFormField(
-                value: _selectedAnimale,
-                items: animali.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) => setState(() => _selectedAnimale = val as String?),
-                decoration: InputDecoration(labelText: "Animale"),
-              ),
-              SizedBox(height: 16),
-              
-              // Specie (opzionale)
-              DropdownButtonFormField(
-                value: _selectedSpecie,
-                items: (_selectedAnimale != null ? specieMap[_selectedAnimale] ?? [] : []).map((e) {
-                  return DropdownMenuItem(value: e, child: Text(e));
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedSpecie = val as String?),
-                decoration: InputDecoration(labelText: "Specie"),
-              ),
-              SizedBox(height: 16),
-              
-              // Mare (opzionale)
-              TextFormField(
-                controller: _mareController,
-                decoration: InputDecoration(labelText: "Mare"),
-              ),
-              SizedBox(height: 16),
-              
-              // Vento (opzionale)
-              TextFormField(
-                controller: _ventoController,
-                decoration: InputDecoration(labelText: "Vento"),
-              ),
-              SizedBox(height: 16),
-              
-              // Note (opzionali)
-              TextFormField(
-                controller: _noteController,
-                decoration: InputDecoration(labelText: "Note"),
-              ),
-              SizedBox(height: 16),
-              
-              // Bottone per salvare l'avvistamento
-              ElevatedButton(
-                onPressed: _isSaving ? null : _saveAvvistamento, 
-                child: _isSaving ? CircularProgressIndicator() : Text("Salva Avvistamento")
-              ),
-            ],
-          ),
+    return PopScope(
+      canPop: _allowPop || (!_saving && !_dirty),
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) {
+          return;
+        }
+        await _handlePopAttempt();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Nuovo avvistamento'),
+          actions: [
+            IconButton(
+              onPressed: _loadingLocation
+                  ? null
+                  : () => _getCurrentLocation(markAsDirty: true),
+              icon: _loadingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location),
+              tooltip: 'Aggiorna posizione',
+            ),
+          ],
         ),
-      ),
-    );
-  }
-}
-*/
+        body: _loadingAnimals
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+                child: Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      TextFormField(
+                        controller: _specimensController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Numero esemplari *',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => _markDirty(),
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Campo obbligatorio';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        initialValue: _selectedAnimalId,
+                        isExpanded: true,
+                        menuMaxHeight: 280,
+                        decoration: const InputDecoration(
+                          labelText: 'Animale *',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _animals
+                            .map(
+                              (animal) => DropdownMenuItem<int>(
+                                value: animal.id,
+                                child: Text(animal.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) async {
+                          setState(() {
+                            _selectedAnimalId = value;
+                            _selectedSpeciesId = null;
+                            _species = const [];
+                          });
+                          _markDirty();
 
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-import 'package:seawatch/screens/avvistamenti/AggiungiImmaginiScreen.dart';
-
-class NuovoAvvistamentoScreen extends StatefulWidget {
-  final String userEmail;
-
-  NuovoAvvistamentoScreen({required this.userEmail});
-
-  @override
-  _NuovoAvvistamentoScreenState createState() => _NuovoAvvistamentoScreenState();
-}
-
-class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
-  final _formKey = GlobalKey<FormState>();
-
-  final TextEditingController _esemplariController = TextEditingController();
-  final TextEditingController _latitudeController = TextEditingController();
-  final TextEditingController _longitudeController = TextEditingController();
-  final TextEditingController _mareController = TextEditingController();
-  final TextEditingController _ventoController = TextEditingController();
-  final TextEditingController _noteController = TextEditingController();
-
-  bool _isSaving = false;
-  String? _selectedAnimale;
-  String? _selectedSpecie;
-
-  List<String> animali = ['Delfino', 'Balena', 'Squalo', 'Tartaruga'];
-  Map<String, List<String>> specieMap = {
-    'Delfino': ['Tursiope', 'Stenella'],
-    'Balena': ['Balena Blu', 'Capodoglio'],
-    'Squalo': ['Squalo Bianco', 'Squalo Martello'],
-    'Tartaruga': ['Caretta', 'Liuto'],
-  };
-
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.deniedForever) return;
-    }
-
-    Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    setState(() {
-      _latitudeController.text = position.latitude.toString();
-      _longitudeController.text = position.longitude.toString();
-    });
-  }
-
-  Future<void> _saveAvvistamento() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isSaving = true);
-
-    const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php';
-    final body = {
-      'request': 'saveAvvMob',
-      'idd': '0',
-      'user': widget.userEmail,
-      'data': DateTime.now().toIso8601String(),
-      'esemplari': _esemplariController.text,
-      'latitudine': _latitudeController.text,
-      'longitudine': _longitudeController.text,
-      'specie': _selectedAnimale ?? '',
-      'sottospecie': _selectedSpecie ?? '',
-      'mare': _mareController.text,
-      'vento': _ventoController.text,
-      'note': _noteController.text,
-    };
-
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse(url))..fields.addAll(body);
-      var response = await request.send();
-
-      if (response.statusCode == 200) {
-        final responseBody = await response.stream.bytesToString();
-        final responseJson = jsonDecode(responseBody);
-        final avvistamentoId = responseJson['avvistamentoId'];
-
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avvistamento salvato con successo!")));
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => AggiungiImmaginiScreen(avvistamentoId: avvistamentoId)),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Errore nel salvataggio.")));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore di rete: $e")));
-    } finally {
-      setState(() => _isSaving = false);
-    }
-  }
-
-  Widget _buildInputField({required TextEditingController controller, required String label, required IconData icon, TextInputType? keyboardType}) {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          decoration: InputDecoration(
-            labelText: label,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-            prefixIcon: Icon(icon, color: Colors.blue),
-            border: InputBorder.none,
-          ),
-          validator: (value) => value!.isEmpty ? "Campo obbligatorio" : null,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDropdown({required String label, required List<String> items, required String? value, required Function(String?) onChanged}) {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: DropdownButtonFormField(
-          value: value,
-          items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            labelText: label,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-            border: InputBorder.none,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildButton({required String text, required Color color, required IconData icon, required VoidCallback onPressed}) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-      label: Text(text, style: const TextStyle(fontSize: 16)),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-        final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("Nuovo Avvistamento", style: TextStyle(fontWeight: FontWeight.bold)),        backgroundColor: theme.colorScheme.primary),
-
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blue.shade50, Colors.white],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              _buildInputField(controller: _esemplariController, label: "Numero di esemplari", icon: Icons.numbers, keyboardType: TextInputType.number),
-              const SizedBox(height: 16),
-              _buildButton(text: "Ottieni Posizione GPS", color: Colors.blue, icon: Icons.location_on, onPressed: _getCurrentLocation),
-              const SizedBox(height: 16),
-              _buildDropdown(label: "Animale", items: animali, value: _selectedAnimale, onChanged: (val) => setState(() => _selectedAnimale = val)),
-              const SizedBox(height: 16),
-              _buildDropdown(label: "Specie", items: _selectedAnimale != null ? specieMap[_selectedAnimale]! : [], value: _selectedSpecie, onChanged: (val) => setState(() => _selectedSpecie = val)),
-              const SizedBox(height: 16),
-              _buildInputField(controller: _mareController, label: "Mare", icon: Icons.waves),
-              const SizedBox(height: 16),
-              _buildInputField(controller: _ventoController, label: "Vento", icon: Icons.air),
-              const SizedBox(height: 16),
-              _buildInputField(controller: _noteController, label: "Note", icon: Icons.note),
-              const SizedBox(height: 16),
-              _buildButton(text: "Carica  immagine", color: Colors.blue, icon: Icons.photo, onPressed: _saveAvvistamento),
-              const SizedBox(height: 32),
-
-              _buildButton(text: "Salva Avvistamento", color: Colors.green, icon: Icons.save, onPressed: _saveAvvistamento),
-            ],
-          ),
-        ),
+                          if (value != null) {
+                            await _loadSpeciesForAnimal(value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        initialValue: _selectedSpeciesId,
+                        isExpanded: true,
+                        menuMaxHeight: 280,
+                        decoration: const InputDecoration(
+                          labelText: 'Specie',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _species
+                            .map(
+                              (specie) => DropdownMenuItem<int>(
+                                value: specie.id,
+                                child: Text(specie.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _species.isEmpty
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _selectedSpeciesId = value;
+                                });
+                                _markDirty();
+                              },
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _latitudeController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Latitudine *',
+                                border: OutlineInputBorder(),
+                              ),
+                              onChanged: (_) => _markDirty(),
+                              validator: (value) {
+                                if ((value ?? '').trim().isEmpty) {
+                                  return 'Obbligatoria';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _longitudeController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Longitudine *',
+                                border: OutlineInputBorder(),
+                              ),
+                              onChanged: (_) => _markDirty(),
+                              validator: (value) {
+                                if ((value ?? '').trim().isEmpty) {
+                                  return 'Obbligatoria';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedSea,
+                        isExpanded: true,
+                        menuMaxHeight: 280,
+                        decoration: const InputDecoration(
+                          labelText: 'Mare',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _seaOptions
+                            .map((s) =>
+                                DropdownMenuItem(value: s, child: Text(s)))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() => _selectedSea = value);
+                          _markDirty();
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedWind,
+                        isExpanded: true,
+                        menuMaxHeight: 280,
+                        decoration: const InputDecoration(
+                          labelText: 'Vento',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _windOptions
+                            .map((w) =>
+                                DropdownMenuItem(value: w, child: Text(w)))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() => _selectedWind = value);
+                          _markDirty();
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _notesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Note',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => _markDirty(),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Immagini (${_images.length}/5)',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          TextButton.icon(
+                            onPressed: _chooseImageSource,
+                            icon: const Icon(Icons.add_a_photo_outlined),
+                            label: const Text('Aggiungi'),
+                          ),
+                        ],
+                      ),
+                      if (_images.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _images
+                              .asMap()
+                              .entries
+                              .map(
+                                (entry) => Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        entry.value,
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            _images.removeAt(entry.key);
+                                          });
+                                          _markDirty();
+                                        },
+                                        child: Container(
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Colors.black54,
+                                          ),
+                                          child: const Icon(
+                                            Icons.close,
+                                            size: 18,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: _saving ? null : _save,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: Text(
+                            _saving ? 'Salvataggio...' : 'Salva avvistamento'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
       ),
     );
   }

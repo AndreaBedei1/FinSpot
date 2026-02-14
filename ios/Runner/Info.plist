@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>SeaWatch usa la fotocamera per caricare immagini degli avvistamenti.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SeaWatch usa la galleria per selezionare immagini da allegare agli avvistamenti.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>SeaWatch puo salvare immagini per la gestione degli avvistamenti.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SeaWatch usa la posizione per compilare latitudine e longitudine degli avvistamenti.</string>
 </dict>
 </plist>

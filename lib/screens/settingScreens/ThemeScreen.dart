@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:seawatch/services/ManagementTheme/ThemeProvider.dart';
 
 class ThemeScreen extends StatelessWidget {
-  const ThemeScreen({Key? key}) : super(key: key);
+  const ThemeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,11 +19,16 @@ class ThemeScreen extends StatelessWidget {
         backgroundColor: theme.colorScheme.primary,
       ),
       body: Container(
-        width: double.infinity, // Fa sì che il contenuto occupi tutto lo schermo
-        height: double.infinity, // Fa sì che il contenuto occupi tutta l'altezza
+        width:
+            double.infinity, // Fa sì che il contenuto occupi tutto lo schermo
+        height:
+            double.infinity, // Fa sì che il contenuto occupi tutta l'altezza
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [theme.colorScheme.primary.withOpacity(0.1), theme.colorScheme.surface],
+            colors: [
+              theme.colorScheme.primary.withValues(alpha: 0.1),
+              theme.colorScheme.surface,
+            ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -34,14 +39,18 @@ class ThemeScreen extends StatelessWidget {
             children: [
               Card(
                 elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        themeProvider.isDark ? Icons.dark_mode : Icons.light_mode,
+                        themeProvider.isDark
+                            ? Icons.dark_mode
+                            : Icons.light_mode,
                         color: theme.colorScheme.secondary,
                         size: 28,
                       ),
@@ -60,7 +69,7 @@ class ThemeScreen extends StatelessWidget {
                         onChanged: (bool value) {
                           themeProvider.toggleTheme();
                         },
-                        activeColor: theme.colorScheme.secondary,
+                        activeThumbColor: theme.colorScheme.secondary,
                       ),
                     ],
                   ),

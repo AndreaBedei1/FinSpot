@@ -1,512 +1,322 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:http/http.dart' as http;
+import 'package:seawatch/models/avvistamento.dart';
+import 'package:seawatch/screens/avvistamenti/AvvistamentoDetailsPage.dart';
+import 'package:seawatch/services/sightings/sightings_repository.dart';
 
 class HomepageScreen extends StatefulWidget {
+  const HomepageScreen({super.key});
+
   @override
-  _HomepageScreenState createState() => _HomepageScreenState();
+  State<HomepageScreen> createState() => _HomepageScreenState();
 }
 
 class _HomepageScreenState extends State<HomepageScreen> {
-  late Future<List<Map<String, dynamic>>> _avvistamenti;
+  final _repository = SightingsRepository.instance;
+
+  bool _loading = true;
+  String? _error;
+  String _syncSummary = 'Caricamento...';
+  List<Avvistamento> _sightings = const [];
 
   @override
   void initState() {
     super.initState();
-    _avvistamenti = fetchAvvistamenti();
+    _load(forceRefresh: true);
   }
 
-  // Funzione per recuperare gli avvistamenti dalla API
-  Future<List<Map<String, dynamic>>> fetchAvvistamenti() async {
-    final url = Uri.parse(
-        'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php');
+  Future<void> _load({bool forceRefresh = false}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
-    final response = await http.post(
-      url,
-      body: {'request': 'tbl_avvistamenti'},
-    );
+    try {
+      final sightings =
+          await _repository.getSightings(forceRefresh: forceRefresh);
+      final syncSummary = await _repository.pendingOperationsSummary();
 
-    if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      print("Dati ricevuti: $data");
-
-      final validData = <Map<String, dynamic>>[];
-
-      // Cambia il formato della data
-      final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-
-      for (var item in data) {
-        try {
-          // Parsing della data con il formato corretto
-          final date = dateFormat.parse(item['Data']);
-          final lat = double.parse(item['Latid'].toString());
-          final long = double.parse(item['Long'].toString());
-
-          validData.add({
-            ...item,
-            'Data': date.toIso8601String(), // Converte in formato ISO 8601
-            'Latid': lat,
-            'Long': long,
-          });
-        } catch (e) {
-          print('Errore nei dati: $item. Dettagli: $e');
-        }
+      if (!mounted) {
+        return;
       }
 
-      print("Dati validi: $validData");
-
-      validData.sort((a, b) {
-        DateTime dateA = DateTime.parse(a['Data']);
-        DateTime dateB = DateTime.parse(b['Data']);
-        return dateB.compareTo(dateA);
+      setState(() {
+        _sightings = sightings;
+        _syncSummary = syncSummary;
       });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
 
-      return validData;
-    } else {
-      throw Exception('Errore nel caricamento degli avvistamenti');
+      setState(() {
+        _error = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
+  }
+
+  String _formatDate(String iso) {
+    final date = DateTime.tryParse(iso);
+    if (date == null) {
+      return '-';
+    }
+    return DateFormat('dd/MM/yyyy HH:mm').format(date.toLocal());
+  }
+
+  Color _markerColorForAnimal(String animal) {
+    final normalized = animal.trim().toLowerCase();
+    if (normalized.contains('balen')) {
+      return const Color(0xFFA855F7); // violet
+    }
+    if (normalized.contains('delfin')) {
+      return const Color(0xFF0EA5E9); // sky blue
+    }
+    if (normalized.contains('foca')) {
+      return const Color(0xFF64748B); // slate gray
+    }
+    if (normalized.contains('razza')) {
+      return const Color(0xFF14B8A6); // teal
+    }
+    if (normalized.contains('squal')) {
+      return const Color(0xFFEF4444); // red
+    }
+    if (normalized.contains('tartarug')) {
+      return const Color(0xFF10B981); // emerald green
+    }
+    if (normalized.contains('tonn')) {
+      return const Color(0xFFF59E0B); // amber
+    }
+    return const Color(0xFF6B7280); // gray default
+  }
+
+  Future<void> _openSightingDetail(Avvistamento sighting) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AvvistamentoDetailsPage(avvistamento: sighting),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    await _load();
+  }
+
+  Future<void> _showMarkerDetails(Avvistamento sighting) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  sighting.specie ?? sighting.animale,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text('Animale: ${sighting.animale}'),
+                Text('Data: ${_formatDate(sighting.data)}'),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    _openSightingDetail(sighting);
+                  },
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Apri dettaglio'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final background = Theme.of(context).scaffoldBackgroundColor;
 
-    return Scaffold(
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _avvistamenti,
-        builder: (context, snapshot) {
-          // Mostra un indicatore di caricamento
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          // Mostra un messaggio d'errore
-          else if (snapshot.hasError) {
-            return Center(
-              child: Text('Errore: ${snapshot.error}'),
-            );
-          }
-          // Mostra un messaggio se non ci sono dati
-          else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-              child: Text('Nessun avvistamento trovato'),
-            );
-          }
+    if (_loading) {
+      return SafeArea(
+        child: ColoredBox(
+          color: background,
+          child: const Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
 
-          // Dati caricati con successo
-          final avvistamenti = snapshot.data!;
-          final recentAvvistamenti = avvistamenti.take(3).toList();
-
-          return Stack(
-            children: [
-              // Mappa con marker
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: LatLng(44.144144, 12.253227),
-                  initialZoom: 10.0,
-                ),
+    if (_error != null) {
+      return SafeArea(
+        child: ColoredBox(
+          color: background,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  TileLayer(
-                    urlTemplate: theme.brightness == Brightness.dark
-                        ? 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
-                        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    subdomains: const ['a', 'b', 'c'],
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
                   ),
-                  MarkerLayer(
-                    markers: avvistamenti.map((avvistamento) {
-                      // Conversione delle coordinate
-                      final lat = avvistamento['Latid'] is String
-                          ? double.parse(avvistamento['Latid'])
-                          : avvistamento['Latid'] as double;
-
-                      final long = avvistamento['Long'] is String
-                          ? double.parse(avvistamento['Long'])
-                          : avvistamento['Long'] as double;
-
-                      // Marker sulla mappa
-                      return Marker(
-                        width: 80.0,
-                        height: 80.0,
-                        point: LatLng(lat, long),
-                        child: Icon(
-                          Icons.location_on,
-                          color: theme.colorScheme.secondary, // Colore dinamico
-                          size: 40,
-                        ),
-                      );
-                    }).toList(),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () => _load(forceRefresh: true),
+                    child: const Text('Riprova'),
                   ),
                 ],
               ),
-              // Barra degli avvistamenti recenti
-              Positioned(
-                bottom: 90.0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  height: 100.0,
-                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: recentAvvistamenti.length,
-                    itemBuilder: (context, index) {
-                      final avvistamento = recentAvvistamenti[index];
-                      return GestureDetector(
-                        onTap: () {
-                          // Naviga ai dettagli dell'avvistamento
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AvvistamentoDetailsPage(
-                                  avvistamento: avvistamento),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: MediaQuery.of(context).size.width *
-                              0.45, // Ridotto a 80% della larghezza
-                          margin: const EdgeInsets.only(right: 8.0),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surface
-                                .withOpacity(0.9), // Sfondo dinamico
-                            borderRadius: BorderRadius.circular(12.0),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black38,
-                                blurRadius:8.0,
-                                  spreadRadius: 1.0, // Espande l'ombra
+            ),
+          ),
+        ),
+      );
+    }
 
-                                offset: Offset(1, 1),
-                              ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.tag,
-                                        color: theme.colorScheme.secondary,
-                                        size: 18),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        //"ID: ${avvistamento['ID']}",
-                                        "${avvistamento['Specie_Nome'] ?? 'Specie sconosciuta'}",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                          color: theme.colorScheme.onSurface,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(Icons.calendar_today,
-                                        color: theme.colorScheme.secondary,
-                                        size: 18),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      //"Data: ${avvistamento['Data']}",
-                                      "Data: ${DateFormat('MM/dd/yyyy').format(DateTime.parse(avvistamento['Data']))}",
+    if (_sightings.isEmpty) {
+      return SafeArea(
+        child: ColoredBox(
+          color: background,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Nessun avvistamento disponibile.'),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: () => _load(forceRefresh: true),
+                  child: const Text('Aggiorna'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: theme.colorScheme.onSurface
-                                            .withOpacity(0.7),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(Icons.pets,
-                                        color: theme.colorScheme.secondary,
-                                        size: 18),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      "Numero: ${avvistamento['Numero_Esemplari']}",
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color: theme.colorScheme.onSurface),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
+    final markers = _sightings.map((s) {
+      final markerColor = _markerColorForAnimal(s.animale);
+      return Marker(
+        point: LatLng(s.latitudine, s.longitudine),
+        width: 42,
+        height: 42,
+        child: Semantics(
+          button: true,
+          label: 'Marker ${s.animale}',
+          child: GestureDetector(
+            onTap: () => _showMarkerDetails(s),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(Icons.location_on, color: markerColor, size: 36),
+                const Icon(Icons.circle, color: Colors.white, size: 11),
+              ],
+            ),
+          ),
+        ),
+      );
+    }).toList();
+
+    final recent = _sightings.take(5).toList();
+
+    return SafeArea(
+      child: ColoredBox(
+        color: background,
+        child: RefreshIndicator(
+          onRefresh: () => _load(forceRefresh: true),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sync),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _syncSummary,
+                          style: const TextStyle(fontSize: 12),
                         ),
-                      );
-                    },
+                      ),
+                      IconButton(
+                        onPressed: () => _load(forceRefresh: true),
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Aggiorna dati',
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-// Schermata dei dettagli di un avvistamento
-
-class AvvistamentoDetailsPage extends StatefulWidget {
-  final Map<String, dynamic> avvistamento;
-
-  const AvvistamentoDetailsPage({Key? key, required this.avvistamento})
-      : super(key: key);
-
-  @override
-  State<AvvistamentoDetailsPage> createState() =>
-      _AvvistamentoDetailsPageState();
-}
-
-class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
-  String? imageUrl;
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchImage();
-  }
-
-  Future<void> _fetchImage() async {
-    const apiUrl =
-        "https://isi-seawatch.csr.unibo.it/Sito/sito/templates/single_sighting/single_api.php";
-    const imageBaseUrl =
-        "https://isi-seawatch.csr.unibo.it/Sito/img/avvistamenti/";
-
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: {
-          "request": "getImages",
-          "id": widget.avvistamento['ID'].toString(),
-        },
-      ).timeout(Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        if (data is List) {
-          final firstValidImage = data.firstWhere(
-            (entry) =>
-                entry is Map<String, dynamic> &&
-                entry['Img'] is String &&
-                entry['Img'].isNotEmpty,
-            orElse: () => null,
-          );
-
-          if (firstValidImage != null) {
-            setState(() {
-              imageUrl = imageBaseUrl + firstValidImage['Img'];
-              isLoading = false;
-            });
-          } else {
-            _handleNoImage();
-          }
-        } else {
-          _handleNoImage();
-        }
-      } else {
-        throw Exception("Errore nel recupero delle immagini");
-      }
-    } catch (e) {
-      _handleNoImage();
-    }
-  }
-
-  void _handleNoImage() {
-    setState(() {
-      isLoading = false;
-      imageUrl = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Dettagli Avvistamento ID: ${widget.avvistamento['ID']}'),
-        backgroundColor: theme.colorScheme.primary,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Card con immagine
-            Card(
-              elevation: 5,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side:
-                    BorderSide(color: Colors.grey.shade400, width: 1), // Bordo
-              ),
-              child: isLoading
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: CircularProgressIndicator(
-                          color: theme.colorScheme.primary,
-                        ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 280,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: LatLng(
+                        _sightings.first.latitudine,
+                        _sightings.first.longitudine,
                       ),
-                    )
-                  : imageUrl != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            imageUrl!,
-                            height: 200,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Text(
-                                  "Errore nel caricamento dell'immagine",
-                                  style: TextStyle(color: Colors.red),
-                                ),
-                              );
-                            },
-                          ),
-                        )
-                      : Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            "Nessuna immagine disponibile",
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-            ),
-            const SizedBox(height: 24), // Spazio maggiore dopo l'immagine
-
-            // Dettagli avvistamento
-            Card(
-              elevation: 3,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side:
-                    BorderSide(color: Colors.grey.shade400, width: 1), // Bordo
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildDetailTile(
-                      Icons.calendar_today,
-                      "Data avvistamento",
-                      widget.avvistamento['Data'] ?? 'N/A',
+                      initialZoom: 9.5,
                     ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.pets,
-                      "Numero esemplari",
-                      widget.avvistamento['Numero_Esemplari']?.toString() ??
-                          'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.air,
-                      "Vento",
-                      widget.avvistamento['Vento'] ?? 'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.water,
-                      "Mare",
-                      widget.avvistamento['Mare'] ?? 'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.notes,
-                      "Note",
-                      widget.avvistamento['Note'] ?? 'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.gps_fixed,
-                      "Latitudine",
-                      widget.avvistamento['Latid']?.toString() ?? 'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.gps_fixed,
-                      "Longitudine",
-                      widget.avvistamento['Long']?.toString() ?? 'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.pets,
-                      "Nome animale",
-                      widget.avvistamento['Anima_Nome'] ?? 'N/A',
-                    ),
-                    const Divider(height: 20, thickness: 1),
-                    _buildDetailTile(
-                      Icons.science,
-                      "Specie",
-                      widget.avvistamento['Specie_Nome'] ?? 'N/A',
-                    ),
-                  ],
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.seawatch',
+                      ),
+                      MarkerLayer(markers: markers),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailTile(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          icon,
-          color: Colors.blue.shade800, // Cambia il colore come preferisci
-          size: 28, // Dimensione opzionale per evidenziare meglio l'icona
-        ),
-        const SizedBox(width: 12), // Spazio tra l'icona e il testo
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Colors.black87,
-                ),
+              const SizedBox(height: 12),
+              const Text(
+                'Ultimi avvistamenti',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
+              const SizedBox(height: 8),
+              ...recent.map(
+                (sighting) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.pets),
+                    title: Text(sighting.specie ?? sighting.animale),
+                    subtitle: Text(
+                      '${_formatDate(sighting.data)}\n'
+                      '${sighting.latitudine.toStringAsFixed(5)}, '
+                      '${sighting.longitudine.toStringAsFixed(5)}',
+                    ),
+                    isThreeLine: true,
+                    trailing: sighting.isPending
+                        ? const Icon(Icons.cloud_upload, color: Colors.orange)
+                        : const Icon(Icons.chevron_right),
+                    onTap: () => _openSightingDetail(sighting),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

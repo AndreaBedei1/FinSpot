@@ -9,9 +9,9 @@ class ThemePrefs {
     await sharedPreferences.setBool(themeKey, value);
   }
 
-  // Recupera il tema (true per scuro, false per chiaro)
-  Future<bool> getTheme() async {
+  // Recupera il tema salvato; null se l'utente non ha ancora scelto.
+  Future<bool?> getTheme() async {
     SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
-    return sharedPreferences.getBool(themeKey) ?? false; // Predefinito chiaro
+    return sharedPreferences.getBool(themeKey);
   }
 }

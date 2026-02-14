@@ -1,132 +1,108 @@
-
-/*
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:seawatch/config/app_config.dart';
+import 'package:seawatch/services/AuthServiceGeneral/AuthService.dart';
+import 'package:seawatch/services/core/api_client.dart';
 
 class ProfileChangeScreen extends StatefulWidget {
-  const ProfileChangeScreen({Key? key}) : super(key: key);
+  const ProfileChangeScreen({super.key});
 
   @override
-  _ProfileChangeScreenState createState() => _ProfileChangeScreenState();
+  State<ProfileChangeScreen> createState() => _ProfileChangeScreenState();
 }
 
 class _ProfileChangeScreenState extends State<ProfileChangeScreen> {
-  final TextEditingController firstNameController = TextEditingController();
-  final TextEditingController lastNameController = TextEditingController();
+  final _authService = AuthService();
+  final _picker = ImagePicker();
 
-  File? _image;
-  final ImagePicker _picker = ImagePicker();
-  bool isLoading = false;
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+
+  bool _loading = true;
+  bool _saving = false;
+  bool _allowPop = false;
+
+  String? _avatarUrl;
+  File? _avatarFile;
+  String _initialFirstName = '';
+  String _initialLastName = '';
+
+  bool get _hasUnsavedChanges {
+    if (_loading || _saving) {
+      return false;
+    }
+
+    return _firstNameController.text.trim() != _initialFirstName ||
+        _lastNameController.text.trim() != _initialLastName ||
+        _avatarFile != null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadProfile();
   }
 
-  Future<void> _loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
     setState(() {
-      firstNameController.text = prefs.getString('firstName') ?? 'Mario';
-      lastNameController.text = prefs.getString('lastName') ?? 'Rossi';
+      _loading = true;
+    });
+
+    final user = await _authService.getCurrentUser(refreshFromServer: true);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _initialFirstName = user?.firstName?.trim() ?? '';
+      _initialLastName = user?.lastName?.trim() ?? '';
+      _firstNameController.text = _initialFirstName;
+      _lastNameController.text = _initialLastName;
+      _avatarUrl =
+          user?.img == null ? null : AppConfig.normalizeUrl(user!.img!);
+      _avatarFile = null;
+      _loading = false;
     });
   }
 
-  Future<void> _saveUserDataLocally() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('firstName', firstNameController.text);
-    await prefs.setString('lastName', lastNameController.text);
-  }
-
-  Future<bool> _updateUserInfo() async {
-    final prefs = await SharedPreferences.getInstance();
-    final email = prefs.getString('userEmail');
-
-    if (email == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Errore: Utente non loggato')),
-      );
-      return false;
+  Future<void> _pickAvatar(ImageSource source) async {
+    final picked = await _picker.pickImage(source: source, imageQuality: 85);
+    if (picked == null) {
+      return;
     }
-
-    if (firstNameController.text.trim().isEmpty || lastNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nome e cognome non possono essere vuoti')),
-      );
-      return false;
-    }
-
-    final url = Uri.parse('https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_settings/settings_api.php');
-    setState(() {
-      isLoading = true;
-    });
-
-    final response = await http.post(
-      url,
-      body: {
-        'request': 'setUserInfoMob',
-        'user': email,
-        'nome': firstNameController.text.trim(),
-        'cognome': lastNameController.text.trim(),
-      },
-    );
 
     setState(() {
-      isLoading = false;
+      _avatarFile = File(picked.path);
     });
-
-    if (response.statusCode == 200) {
-      try {
-        final result = json.decode(response.body);
-
-        if (result is Map<String, dynamic> && result['stato'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Dati aggiornati con successo')),
-          );
-          await _saveUserDataLocally(); // Salva i nuovi dati localmente
-          return true;
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Errore: ${result["msg"] ?? "Errore sconosciuto"}')),
-          );
-          return false;
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Errore nel formato della risposta dal server')),
-        );
-        return false;
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Errore di comunicazione con il server')),
-      );
-      return false;
-    }
   }
 
-  Future<void> _pickImage() async {
-    final ImageSource? source = await showDialog<ImageSource>(
+  Future<void> _chooseAvatarSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Seleziona un\'opzione'),
-          content: Column(
+      builder: (context) {
+        return SafeArea(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('Scatta una foto'),
-                onTap: () => Navigator.of(context).pop(ImageSource.camera),
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Scatta foto'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library),
+                leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('Scegli dalla galleria'),
-                onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
               ),
             ],
           ),
@@ -135,263 +111,199 @@ class _ProfileChangeScreenState extends State<ProfileChangeScreen> {
     );
 
     if (source != null) {
-      final XFile? pickedFile = await _picker.pickImage(source: source);
-      if (pickedFile != null) {
+      await _pickAvatar(source);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      await _authService.updateProfile(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+      );
+
+      if (_avatarFile != null) {
+        await _authService.uploadAvatar(_avatarFile!.path);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _initialFirstName = _firstNameController.text.trim();
+        _initialLastName = _lastNameController.text.trim();
+        _avatarFile = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profilo aggiornato.')),
+      );
+
+      Navigator.pop(context, true);
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Errore durante il salvataggio.')),
+      );
+    } finally {
+      if (mounted) {
         setState(() {
-          _image = File(pickedFile.path);
+          _saving = false;
         });
       }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Future<bool> _confirmDiscardChanges() async {
+    if (!_hasUnsavedChanges) {
+      return true;
+    }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Modifica Profilo'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  GestureDetector(
-                    onTap: _pickImage,
-                    child: CircleAvatar(
-                      radius: 80,
-                      backgroundImage: _image != null ? FileImage(_image!) : null,
-                      backgroundColor: theme.colorScheme.secondary.withOpacity(0.1),
-                      child: _image == null
-                          ? Icon(
-                              Icons.camera_alt,
-                              size: 50,
-                              color: theme.colorScheme.onBackground.withOpacity(0.5),
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: firstNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Nome',
-                      prefixIcon: const Icon(Icons.person),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: lastNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Cognome',
-                      prefixIcon: const Icon(Icons.person_outline),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final success = await _updateUserInfo();
-                      if (success) {
-                        Navigator.pop(context, true); // Ritorna alla schermata precedente
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                    ),
-                    child: const Text('Salva'),
-                  ),
-                ],
-              ),
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Modifiche non salvate'),
+          content: const Text('Vuoi uscire senza salvare le modifiche?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Continua a modificare'),
             ),
-    );
-  }
-}
-*/
-
-import 'dart:io';
-import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-
-class ProfileChangeScreen extends StatefulWidget {
-  const ProfileChangeScreen({Key? key}) : super(key: key);
-
-  @override
-  _ProfileChangeScreenState createState() => _ProfileChangeScreenState();
-}
-
-class _ProfileChangeScreenState extends State<ProfileChangeScreen> {
-  final TextEditingController firstNameController = TextEditingController();
-  final TextEditingController lastNameController = TextEditingController();
-
-  File? _image;
-  final ImagePicker _picker = ImagePicker();
-  bool isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      firstNameController.text = prefs.getString('firstName') ?? 'Inserisci Nome';
-      lastNameController.text = prefs.getString('lastName') ?? 'Inserisci Cognome';
-    });
-  }
-
-  Future<void> _pickImage() async {
-    final ImageSource? source = await showDialog<ImageSource>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Seleziona un\'opzione'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.blue),
-                title: const Text('Scatta una foto'),
-                onTap: () => Navigator.of(context).pop(ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Colors.green),
-                title: const Text('Scegli dalla galleria'),
-                onTap: () => Navigator.of(context).pop(ImageSource.gallery),
-              ),
-            ],
-          ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Esci senza salvare'),
+            ),
+          ],
         );
       },
     );
 
-    if (source != null) {
-      final XFile? pickedFile = await _picker.pickImage(source: source);
-      if (pickedFile != null) {
-        setState(() {
-          _image = File(pickedFile.path);
-        });
-      }
+    return discard == true;
+  }
+
+  Future<void> _handlePopAttempt() async {
+    if (_saving) {
+      return;
     }
+
+    final canLeave = await _confirmDiscardChanges();
+    if (!canLeave || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _allowPop = true;
+    });
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Modifica Profilo', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: theme.colorScheme.primary,
-        elevation: 4,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [theme.colorScheme.primary.withOpacity(0.1), theme.colorScheme.surface],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+    if (_loading) {
+      return PopScope(
+        canPop: _allowPop || !_saving,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) {
+            return;
+          }
+          await _handlePopAttempt();
+        },
+        child: Scaffold(
+          appBar: AppBar(title: const Text('Modifica profilo')),
+          body: const Center(child: CircularProgressIndicator()),
         ),
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: _pickImage,
-                      child: CircleAvatar(
-                        radius: 80,
-                        backgroundImage: _image != null ? FileImage(_image!) : null,
-                        backgroundColor: theme.colorScheme.secondary.withOpacity(0.1),
-                        child: _image == null
-                            ? Icon(
-                                Icons.camera_alt,
-                                size: 50,
-                                color: theme.colorScheme.onBackground.withOpacity(0.5),
-                              )
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildInputField(
-                      controller: firstNameController,
-                      label: 'Nome',
-                      icon: Icons.person,
-                      isBold: true,
-                    ),
-                    const SizedBox(height: 10),
-                    _buildInputField(
-                      controller: lastNameController,
-                      label: 'Cognome',
-                      icon: Icons.person_outline,
-                      isBold: true,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildButton(
-                      text: 'Aggiorna immagine del profilo',
-                      color: theme.colorScheme.secondary,
-                      icon: Icons.image,
-                      onPressed: _pickImage,
-                    ),
-                    const SizedBox(height: 10),
-                    _buildButton(
-                      text: 'Salva',
-                      color: theme.colorScheme.primary,
-                      icon: Icons.save,
-                      onPressed: () async {
-                        // Simuliamo il salvataggio con un breve delay
-                        setState(() => isLoading = true);
-                        await Future.delayed(const Duration(seconds: 2));
-                        setState(() => isLoading = false);
-                        Navigator.pop(context, true);
-                      },
-                    ),
-                  ],
+      );
+    }
+
+    ImageProvider<Object>? avatarProvider;
+    if (_avatarFile != null) {
+      avatarProvider = FileImage(_avatarFile!);
+    } else if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      avatarProvider = NetworkImage(_avatarUrl!);
+    }
+
+    return PopScope(
+      canPop: _allowPop || (!_saving && !_hasUnsavedChanges),
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) {
+          return;
+        }
+        await _handlePopAttempt();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Modifica profilo')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Center(
+              child: Semantics(
+                button: true,
+                label: 'Cambia immagine profilo',
+                child: GestureDetector(
+                  onTap: _saving ? null : _chooseAvatarSource,
+                  child: CircleAvatar(
+                    radius: 52,
+                    backgroundImage: avatarProvider,
+                    child: (_avatarFile == null &&
+                            (_avatarUrl == null || _avatarUrl!.isEmpty))
+                        ? const Icon(Icons.person, size: 52)
+                        : null,
+                  ),
                 ),
               ),
-      ),
-    );
-  }
-
-  Widget _buildInputField({required TextEditingController controller, required String label, required IconData icon, bool isBold = false}) {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal),
-          prefixIcon: Icon(icon, color: Colors.blueAccent),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _firstNameController,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.givenName],
+              decoration: const InputDecoration(
+                labelText: 'Nome',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _lastNameController,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.familyName],
+              decoration: const InputDecoration(
+                labelText: 'Cognome',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: Text(_saving ? 'Salvataggio...' : 'Salva modifiche'),
+            ),
+          ],
         ),
       ),
     );
   }
-
-  Widget _buildButton({required String text, required Color color, required IconData icon, required VoidCallback onPressed}) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-      label: Text(text, style: const TextStyle(fontSize: 16)),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-} 
+}

@@ -1,565 +1,298 @@
-/*
-import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-
-@override 
-class StatisticsScreen extends StatefulWidget {
-  _StatisticsScreenState createState() => _StatisticsScreenState();
-}
-
-class _StatisticsScreenState extends State<StatisticsScreen> {
-  late Future<List<Map<String, dynamic>>> _sightings;
-
-  @override
-  void initState() {
-    super.initState();
-    _sightings = fetchSightings();
-  }
-
-  Future<List<Map<String, dynamic>>> fetchSightings() async {
-    final url = Uri.parse(
-        'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php');
-
-    final response = await http.post(
-      url,
-      body: {'request': 'tbl_avvistamenti'},
-    );
-
-    if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      return data.cast<Map<String, dynamic>>();
-    } else {
-      throw Exception('Errore nel caricamento dei dati');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Statistiche"),
-        backgroundColor: Colors.blueAccent,
-      ),
-      body: Container(
-        color: Colors.grey[50],
-        child: FutureBuilder<List<Map<String, dynamic>>>(
-          future: _sightings,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (snapshot.hasError) {
-              return Center(child: Text('Errore: ${snapshot.error}'));
-            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Center(child: Text("Nessun dato disponibile"));
-            }
-
-            final sightings = snapshot.data!;
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    // Panoramica Generale
-                    Card(
-                      elevation: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: buildOverviewSection(sightings),
-                      ),
-                    ),
-                    // Istogramma
-                    Card(
-                      elevation: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Istogramma: Numero di Esemplari per Data",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueAccent,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            buildHistogram(sightings),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Grafico a Torta
-                    Card(
-                      elevation: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Grafico a Torta: Specie Osservate",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueAccent,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            buildPieChartWithLegend(sightings),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-    Widget buildOverviewSection(List<Map<String, dynamic>> sightings) {
-    int totalSpecimens = sightings.fold(
-      0,
-      (total, sighting) {
-        final specimens = sighting['Numero_Esemplari'];
-        return total + (int.tryParse(specimens?.toString() ?? '0') ?? 0);
-      },
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.visibility, color: Colors.blueAccent),
-            const SizedBox(width: 8),
-            Text(
-              "Numero Totale di Avvistamenti: ${sightings.length}",
-              style: const TextStyle(fontSize: 16),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Icon(Icons.assignment_ind, color: Colors.blueAccent),
-            const SizedBox(width: 8),
-            Text(
-              "Totale Esemplari Visti: $totalSpecimens",
-              style: const TextStyle(fontSize: 16),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-  Widget buildHistogram(List<Map<String, dynamic>> sightings) {
-  Map<String, int> specimensPerDate = {};
-
-  for (var sighting in sightings) {
-    String date = sighting['Data']?.split(' ')[0] ?? '';
-    int specimens =
-        int.tryParse(sighting['Numero_Esemplari']?.toString() ?? '0') ?? 0;
-
-    if (date.isNotEmpty) {
-      specimensPerDate[date] = (specimensPerDate[date] ?? 0) + specimens;
-    }
-  }
-
-  // Ordinare le date
-  final sortedDates = specimensPerDate.entries.toList()
-    ..sort((a, b) => a.key.compareTo(b.key));
-
-  List<BarChartGroupData> barGroups = sortedDates.asMap().entries.map((entry) {
-    int index = entry.key;
-    int value = entry.value.value;
-    return BarChartGroupData(
-      x: index,
-      barRods: [
-        BarChartRodData(
-          toY: value.toDouble(),
-          width: 16,
-          color: Colors.blueAccent,
-          borderRadius: BorderRadius.circular(4),
-          // Rimuoviamo la parte celeste (background)
-          backDrawRodData: BackgroundBarChartRodData(
-            show: false, // Disattiviamo il background celeste
-            toY: value.toDouble() + 10,
-            color: Colors.blue[100],
-          ),
-        ),
-      ],
-    );
-  }).toList();
-
-  return SizedBox(
-    height: 300,
-    child: BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        barGroups: barGroups,
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          getDrawingHorizontalLine: (value) =>
-              FlLine(color: Colors.grey[300], strokeWidth: 1),
-          // Eliminare i numeri in alto
-          drawHorizontalLine: false, // Disattiva le linee orizzontali
-        ),
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              getTitlesWidget: (value, meta) {
-                return Text('${value.toInt()}',
-                    style: const TextStyle(fontSize: 10));
-              },
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              interval: 5, // Mostra un'etichetta ogni 5 barre
-              reservedSize: 28,
-              getTitlesWidget: (value, meta) {
-                if (value < sortedDates.length) {
-                  String date = sortedDates[value.toInt()].key;
-                  return Text(
-                    date,
-                    style: const TextStyle(fontSize: 10),
-                    overflow: TextOverflow.ellipsis,
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-
-Widget buildPieChartWithLegend(List<Map<String, dynamic>> sightings) {
-  Map<String, int> speciesCount = {};
-
-  for (var sighting in sightings) {
-    String? species = sighting['Specie_Nome'];
-    if (species != null && species.isNotEmpty) {
-      speciesCount[species] = (speciesCount[species] ?? 0) + 1;
-    }
-  }
-
-  List<PieChartSectionData> pieSections = speciesCount.entries.map((entry) {
-    return PieChartSectionData(
-      value: entry.value.toDouble(),
-      title: '',
-      color: Colors.primaries[
-          speciesCount.keys.toList().indexOf(entry.key) % Colors.primaries.length],
-      radius: 50,
-    );
-  }).toList();
-
-return Container(
-  padding: const EdgeInsets.only(bottom: 32), // Spazio per evitare il taglio
-  child: Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      // Grafico a torta
-      Expanded(
-        child: SizedBox(
-          height: 200,
-          child: PieChart(
-            PieChartData(
-              sections: pieSections,
-              sectionsSpace: 4,
-              centerSpaceRadius: 40,
-            ),
-          ),
-        ),
-      ),
-      // Legenda
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: speciesCount.entries.map((entry) {
-          return Row(
-            children: [
-              Container(
-                width: 16,
-                height: 16,
-                color: Colors.primaries[
-                    speciesCount.keys.toList().indexOf(entry.key) %
-                        Colors.primaries.length],
-              ),
-              const SizedBox(width: 8),
-              Text(entry.key),
-            ],
-          );
-        }).toList(),
-      ),
-    ],
-  ),
-);
-
-}
-}
-*/
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:seawatch/models/avvistamento.dart';
+import 'package:seawatch/services/sightings/sightings_repository.dart';
 
 class StatisticsScreen extends StatefulWidget {
+  const StatisticsScreen({super.key});
+
   @override
-  _StatisticsScreenState createState() => _StatisticsScreenState();
+  State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
-  late Future<List<Map<String, dynamic>>> _sightings;
+  final _repository = SightingsRepository.instance;
+
+  bool _loading = true;
+  String? _error;
+  List<Avvistamento> _sightings = const [];
 
   @override
   void initState() {
     super.initState();
-    _sightings = fetchSightings();
+    _load();
   }
 
-  Future<List<Map<String, dynamic>>> fetchSightings() async {
-    final url = Uri.parse('https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php');
-    final response = await http.post(url, body: {'request': 'tbl_avvistamenti'});
-
-    if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      return data.cast<Map<String, dynamic>>();
-    } else {
-      throw Exception('Errore nel caricamento dei dati');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-        final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Statistiche', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: theme.colorScheme.primary,
-          elevation: 4,
-
-      ),
-      body: Container(
-        color: Colors.blue.shade50,
-        child: FutureBuilder<List<Map<String, dynamic>>>(
-          future: _sightings,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Colors.blueAccent));
-            } else if (snapshot.hasError) {
-              return Center(child: Text('Errore: ${snapshot.error}', style: const TextStyle(color: Colors.black)));
-            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Center(child: Text("Nessun dato disponibile", style: TextStyle(color: Colors.black)));
-            }
-
-            final sightings = snapshot.data!.take(15).toList();
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Card(
-                      elevation: 4,
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: buildOverviewSection(sightings),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text("Avvistamenti per mese", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 350, child: buildBarChart(sightings)),
-                    const SizedBox(height: 16),
-                    Text("Distribuzione degli avvistamenti", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 350, child: buildPieChart(sightings)),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget buildOverviewSection(List<Map<String, dynamic>> sightings) {
-    int totalSpecimens = sightings.fold(0, (total, sighting) {
-      final specimens = sighting['Numero_Esemplari'];
-      return total + (int.tryParse(specimens?.toString() ?? '0') ?? 0);
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
     });
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.visibility, color: Colors.blueAccent),
-            const SizedBox(width: 8),
-            Text("Numero Totale di Avvistamenti: ${sightings.length}", style: const TextStyle(fontSize: 16)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Icon(Icons.assignment_ind, color: Colors.blueAccent),
-            const SizedBox(width: 8),
-            Text("Totale Esemplari Visti: $totalSpecimens", style: const TextStyle(fontSize: 16)),
-          ],
-        ),
-      ],
-    );
-  }
+    try {
+      final sightings = await _repository.getSightings();
+      if (!mounted) {
+        return;
+      }
 
-  Widget buildBarChart(List<Map<String, dynamic>> sightings) {
-    Map<String, int> specimensPerMonth = {};
-    for (var sighting in sightings) {
-      String rawDate = sighting['Data']?.split(' ')[0] ?? '';
-      try {
-        DateTime date = DateFormat('dd/MM/yyyy').parse(rawDate);
-        String month = DateFormat('MMM yyyy').format(date);
-        int specimens = int.tryParse(sighting['Numero_Esemplari']?.toString() ?? '0') ?? 0;
-        specimensPerMonth[month] = (specimensPerMonth[month] ?? 0) + specimens;
-      } catch (e) {
-        continue;
+      setState(() {
+        _sightings = sightings;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
       }
     }
+  }
 
-    List<BarChartGroupData> barGroups = specimensPerMonth.entries.map((entry) {
-      return BarChartGroupData(
-        x: specimensPerMonth.keys.toList().indexOf(entry.key),
-        barRods: [
-          BarChartRodData(
-            toY: entry.value.toDouble(),
-            color: Colors.blueAccent,
-            width: 40,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ],
+  @override
+  Widget build(BuildContext context) {
+    final background = Theme.of(context).scaffoldBackgroundColor;
+
+    if (_loading) {
+      return SafeArea(
+        child: ColoredBox(
+          color: background,
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
-    }).toList();
+    }
 
-    return BarChart(
-      BarChartData(
-        barGroups: barGroups,
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                final keys = specimensPerMonth.keys.toList();
-                return keys.length > value.toInt()
-                    ? Text(keys[value.toInt()], style: TextStyle(fontSize: 12, color: Colors.black))
-                    : Container();
-              },
-              reservedSize: 30,
+    if (_error != null) {
+      return SafeArea(
+        child: ColoredBox(
+          color: background,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center),
+                  const SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: _load,
+                    child: const Text('Riprova'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        borderData: FlBorderData(show: true),
-        gridData: FlGridData(show: false),
-      ),
-    );
-  }
-}
-Widget buildPieChart(List<Map<String, dynamic>> sightings) {
-  Map<String, int> speciesCount = {};
-
-  for (var sighting in sightings) {
-    String? species = sighting['Specie_Nome'];
-    if (species != null && species.isNotEmpty) {
-      speciesCount[species] = (speciesCount[species] ?? 0) + 1;
+      );
     }
-  }
 
-  List<PieChartSectionData> pieSections = speciesCount.entries.map((entry) {
-    return PieChartSectionData(
-      value: entry.value.toDouble(),
-      title: '',
-      color: Colors.primaries[
-          speciesCount.keys.toList().indexOf(entry.key) % Colors.primaries.length],
-      radius: 50,
+    if (_sightings.isEmpty) {
+      return SafeArea(
+        child: ColoredBox(
+          color: background,
+          child: const Center(child: Text('Nessun avvistamento disponibile.')),
+        ),
+      );
+    }
+
+    final totalSightings = _sightings.length;
+    final totalSpecimens = _sightings.fold<int>(
+      0,
+      (acc, s) => acc + s.numeroEsemplari,
     );
-  }).toList();
 
-  return Column(
-    children: [
-      SizedBox(
-        height: 250, // Aumenta l'altezza per evitare il taglio
-        child: Row(
-          children: [
-            // Grafico a torta
-            Expanded(
-              flex: 2,
-              child: PieChart(
-                PieChartData(
-                  sections: pieSections,
-                  sectionsSpace: 4,
-                  centerSpaceRadius: 40,
+    final bySpecies = <String, int>{};
+    for (final s in _sightings) {
+      final key = (s.specie ?? s.animale).trim();
+      bySpecies[key] = (bySpecies[key] ?? 0) + 1;
+    }
+
+    final daily = <DateTime, int>{};
+    final dayFmt = DateFormat('dd/MM');
+    for (final s in _sightings) {
+      final d = s.dataDateTime.toLocal();
+      final day = DateTime(d.year, d.month, d.day);
+      daily[day] = (daily[day] ?? 0) + s.numeroEsemplari;
+    }
+
+    final sortedDays = daily.keys.toList()..sort();
+
+    final dayEntries = sortedDays
+        .map((k) => MapEntry<String, int>(dayFmt.format(k), daily[k] ?? 0))
+        .toList(growable: false);
+
+    final speciesEntries = bySpecies.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final speciesSummary = speciesEntries
+        .map((e) => '${e.key}: ${e.value}')
+        .toList(growable: false)
+        .join(', ');
+
+    return SafeArea(
+      child: ColoredBox(
+        color: background,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Avvistamenti totali: $totalSightings'),
+                      const SizedBox(height: 6),
+                      Text('Esemplari totali osservati: $totalSpecimens'),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            // Legenda
-            Expanded(
-              flex: 1,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: speciesCount.entries.map((entry) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4), // Spaziatura tra le voci della legenda
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: Colors.primaries[
-                                speciesCount.keys.toList().indexOf(entry.key) %
-                                    Colors.primaries.length],
-                            borderRadius: BorderRadius.circular(4),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Esemplari per giorno',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 220,
+                        child: Semantics(
+                          label:
+                              'Grafico a barre degli esemplari osservati per giorno.',
+                          value: dayEntries
+                              .map((e) => '${e.key}: ${e.value}')
+                              .join(', '),
+                          child: BarChart(
+                            BarChartData(
+                              borderData: FlBorderData(show: false),
+                              gridData: const FlGridData(show: true),
+                              titlesData: FlTitlesData(
+                                topTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false),
+                                ),
+                                rightTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false),
+                                ),
+                                leftTitles: const AxisTitles(
+                                  sideTitles: SideTitles(
+                                      showTitles: true, reservedSize: 28),
+                                ),
+                                bottomTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    getTitlesWidget: (value, meta) {
+                                      final idx = value.toInt();
+                                      if (idx < 0 || idx >= dayEntries.length) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return Text(dayEntries[idx].key,
+                                          style: const TextStyle(fontSize: 10));
+                                    },
+                                  ),
+                                ),
+                              ),
+                              barGroups:
+                                  dayEntries.asMap().entries.map((entry) {
+                                return BarChartGroupData(
+                                  x: entry.key,
+                                  barRods: [
+                                    BarChartRodData(
+                                      toY: entry.value.value.toDouble(),
+                                      color: Colors.blue,
+                                      width: 18,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            entry.key,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Distribuzione specie',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 180,
+                        child: Semantics(
+                          label: 'Grafico a torta della distribuzione specie.',
+                          value: speciesSummary,
+                          child: PieChart(
+                            PieChartData(
+                              sections:
+                                  speciesEntries.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final species = entry.value;
+                                return PieChartSectionData(
+                                  value: species.value.toDouble(),
+                                  title: '${species.value}',
+                                  radius: 50,
+                                  color: Colors
+                                      .primaries[idx % Colors.primaries.length],
+                                );
+                              }).toList(),
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 28,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ...speciesEntries.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final species = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                color: Colors
+                                    .primaries[idx % Colors.primaries.length],
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(species.key)),
+                              Text(species.value.toString()),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ],
-  );
+    );
+  }
 }
-
-

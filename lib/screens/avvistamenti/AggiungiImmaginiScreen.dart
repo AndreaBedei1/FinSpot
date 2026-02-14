@@ -1,75 +1,126 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
+import 'package:seawatch/services/sightings/sightings_repository.dart';
 
 class AggiungiImmaginiScreen extends StatefulWidget {
+  const AggiungiImmaginiScreen({super.key, required this.avvistamentoId});
+
   final String avvistamentoId;
 
-  AggiungiImmaginiScreen({required this.avvistamentoId});
-
   @override
-  _AggiungiImmaginiScreenState createState() => _AggiungiImmaginiScreenState();
+  State<AggiungiImmaginiScreen> createState() => _AggiungiImmaginiScreenState();
 }
 
 class _AggiungiImmaginiScreenState extends State<AggiungiImmaginiScreen> {
-  List<File> _images = [];
-  final ImagePicker _picker = ImagePicker();
+  final _repository = SightingsRepository.instance;
+  final _picker = ImagePicker();
+  final List<File> _images = [];
 
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
-    if (pickedFile != null && _images.length < 5) {
-      setState(() {
-        _images.add(File(pickedFile.path));
-      });
+  bool _loading = false;
+
+  int get _sightingId => int.tryParse(widget.avvistamentoId) ?? -1;
+
+  Future<void> _pick(ImageSource source) async {
+    final picked = await _picker.pickImage(source: source, imageQuality: 85);
+    if (picked == null) {
+      return;
     }
+
+    setState(() {
+      _images.add(File(picked.path));
+    });
   }
 
-  Future<void> _uploadImages() async {
-    const url = 'https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_sighting/sighting_api.php';
+  Future<void> _uploadAll() async {
+    if (_images.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+    });
 
     try {
-      for (var image in _images) {
-        var request = http.MultipartRequest('POST', Uri.parse(url));
-        request.fields['request'] = 'uploadImage';
-        request.fields['avvistamentoId'] = widget.avvistamentoId;
-        request.files.add(await http.MultipartFile.fromPath('image', image.path, contentType: MediaType('image', 'jpeg')));
-        
-        var response = await request.send();
-
-        if (response.statusCode == 200) {
-          print("Immagine caricata con successo.");
-        } else {
-          print("Errore nel caricamento dell'immagine.");
-        }
+      for (final image in _images) {
+        await _repository.uploadImage(_sightingId, image.path);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Immagini caricate con successo!")));
-      Navigator.pop(context); // Torna alla schermata precedente
-    } catch (e) {
-      print("Errore durante il caricamento delle immagini: $e");
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Immagini gestite correttamente.')),
+      );
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore upload immagini: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Aggiungi Immagini"), backgroundColor: Colors.blue.shade800),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            ElevatedButton(onPressed: _pickImage, child: Text("Seleziona Immagine")),
-            SizedBox(height: 16),
-            Wrap(children: _images.map((img) => Image.file(img, height: 100)).toList()),
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _uploadImages,
-              child: Text("Carica Immagini"),
-            ),
-          ],
-        ),
+      appBar: AppBar(title: const Text('Aggiungi immagini')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _images
+                .map(
+                  (file) => Image.file(
+                    file,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _loading ? null : () => _pick(ImageSource.camera),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Camera'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : () => _pick(ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Galleria'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton(
+            onPressed: _loading ? null : _uploadAll,
+            child: _loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Carica immagini'),
+          ),
+        ],
       ),
     );
   }

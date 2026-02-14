@@ -1,421 +1,372 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:http/io_client.dart';
-import 'package:crypto/crypto.dart';
-import 'package:logger/logger.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math';
 
-/*
+import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
+import 'package:seawatch/config/app_config.dart';
+import 'package:seawatch/models/avvistamento.dart';
+import 'package:seawatch/services/core/api_client.dart';
+import 'package:seawatch/services/core/app_state_store.dart';
+import 'package:seawatch/services/sightings/sightings_repository.dart';
 
 class AuthService {
-  final String baseUrl = "https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_login/login_api.php";
-  final logger = Logger();
+  AuthService({
+    ApiClient? api,
+    AppStateStore? store,
+  })  : _api = api ?? ApiClient(),
+        _store = store ?? AppStateStore();
 
-  IOClient createIoClient() {
-    final httpClient = HttpClient()
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-    return IOClient(httpClient);
+  final ApiClient _api;
+  final AppStateStore _store;
+
+  String _normalizeEmail(String email) => email.trim().toLowerCase();
+
+  String? _normalizeOptionalUrl(dynamic value) {
+    final raw = value?.toString();
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+    return AppConfig.normalizeUrl(raw.trim());
   }
 
-  Future<dynamic> postRequest(Map<String, String> body) async {
-    final client = createIoClient();
-    try {
-      final request = http.MultipartRequest("POST", Uri.parse(baseUrl));
-      body.forEach((key, value) {
-        request.fields[key] = value;
-      });
-      final response = await request.send().timeout(Duration(seconds: 10));
-
-      final responseBody = await response.stream.bytesToString();
-      print("Corpo della risposta del server: $responseBody");
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(responseBody);
-        return decoded;
-      } else if (response.statusCode == 401) {
-        throw Exception("Non autorizzato. Verifica email e password.");
-      } else {
-        throw Exception("Errore del server: ${response.statusCode}");
-      }
-    } catch (e) {
-      logger.e("Errore durante la richiesta HTTP: $e");
-      throw Exception("Errore durante la richiesta HTTP: $e");
+  UserLite _normalizeUserImage(UserLite user) {
+    final normalized = _normalizeOptionalUrl(user.img);
+    if (normalized == user.img) {
+      return user;
     }
-  }
-
-  // Metodo per cifrare la password con HMAC-SHA512
-  String encrypt(String password, String key) {
-    print("Cifratura password:"); // Aggiungi questa riga per vedere cosa sta succedendo
-
-    // Mostra la chiave e la password prima della cifratura
-    print("Chiave: $key");
-    print("Password: $password");
-
-    final hmacSha512 = Hmac(sha512, utf8.encode(key));  // Cambiato sha512 in sha256
-    final digest = hmacSha512.convert(utf8.encode(password));
-
-    // Stampa l'hash (cifratura) risultante
-    print("Password cifrata (digest): $digest");
-
-    return digest.toString();
-  }
-
-Future<void> login(String email, String password) async {
-  try {
-    email = email.trim().toLowerCase();
-    print("Verifica email in corso...");
-
-    // Richiesta per verificare l'email e ottenere la "key"
-    final emailResponse = await postRequest({
-      "request": "email",
-      "email": email,
-    });
-
-    if (emailResponse is Map && emailResponse["state"] == true && emailResponse["Key"] != null) {
-      final key = emailResponse["Key"];
-      print("Chiave ricevuta dal server: $key");
-
-      // Cifra la password con la chiave ottenuta
-      final encryptedPassword = encrypt(password, key);
-
-      // Richiesta per effettuare il login
-      final loginResponse = await postRequest({
-        "request": "pwd",
-        "email": email,
-        "password": encryptedPassword,
-      });
-
-      if (loginResponse is Map && loginResponse["state"] == false) {
-        throw Exception(loginResponse["msg"]);
-      }
-
-      // Salva la sessione
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isAuthenticated', true); // Salva lo stato
-      await prefs.setString('userEmail', email); // Opzionale: salva l'email
-
-      print("Login effettuato con successo!");
-    } else {
-      throw Exception("Errore: Nessuna chiave trovata per l'email fornita.");
-    }
-  } catch (e) {
-    print("Errore durante il login: $e");
-    rethrow;
-  }
-}
-
-Future<bool> checkSession() async {
-  final prefs = await SharedPreferences.getInstance();
-  return prefs.getBool('isAuthenticated') ?? false;
-}
-
-Future<void> logout() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.clear(); // Rimuove tutte le preferenze salvate
-  print("Utente disconnesso");
-}
-
-// Metodo di validazione per password
-bool _isValidPassword(String password) {
-  final passwordRegex = RegExp(r'^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[!@#\$&*~]).{8,}$');
-  return passwordRegex.hasMatch(password);
-}
-
-
-Future<void> changePassword(BuildContext context, String email, String oldPassword, String newPassword) async {
-  try {
-    // Passaggio 1: Ottenere la chiave
-    final keyResponse = await postRequest({
-      "request": "getKeyMob",
-      "user": email,
-    });
-
-    final keyJson = jsonDecode(keyResponse);
-    if (keyJson["key"] == null) {
-      throw Exception("Chiave non trovata.");
-    }
-
-    final key = keyJson["key"];
-
-    // Hash delle password
-    final hashedOldPassword = calculateHmacSha512(oldPassword, key);
-    final hashedNewPassword = calculateHmacSha512(newPassword, key);
-
-    // Passaggio 2: Cambiare la password
-    final changePasswordResponse = await postRequest({
-      "request": "changePwdMob",
-      "user": email,
-      "old": hashedOldPassword,
-      "new": hashedNewPassword,
-    });
-
-    final changeJson = jsonDecode(changePasswordResponse);
-    if (changeJson["stato"] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(changeJson["msg"] ?? "Password cambiata con successo.")),
-      );
-    } else {
-      throw Exception(changeJson["msg"] ?? "Errore durante il cambio password.");
-    }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Errore: $e')),
+    return UserLite(
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      img: normalized,
     );
   }
-}
 
-String calculateHmacSha512(String message, String key) {
-  var keyBytes = utf8.encode(key);
-  var messageBytes = utf8.encode(message);
-
-  var hmac = Hmac(sha512, keyBytes); // Usa SHA-512
-  var digest = hmac.convert(messageBytes);
-
-  return digest.toString();
-}
-
-
-
-}
-*/
-
-/*
-Future<void> changePassword(BuildContext context, String oldPassword, String newPassword) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final user = prefs.getString('userEmail');
-
-      if (user == null) {
-        throw Exception('Utente non autenticato. Effettua il login.');
-      }
-
-      // Step 1: Ottenere la chiave dal server
-      final keyResponse = await postRequest({
-        "request": "getKeyMob",
-        "user": user,
-      });
-
-      if (keyResponse["key"] == null) {
-        throw Exception("Errore: impossibile ottenere la chiave per cifrare la password.");
-      }
-
-      final key = keyResponse["key"];
-
-      // Step 2: Cifrare vecchia e nuova password
-      final hashedOldPassword = encrypt(oldPassword, key);
-      final hashedNewPassword = encrypt(newPassword, key);
-
-      // Step 3: Inviare la richiesta di cambio password
-      final changePasswordResponse = await postRequest({
-        'request': 'changePwdMob',
-        'old': hashedOldPassword,
-        'new': hashedNewPassword,
-        'user': user,
-      });
-
-      if (changePasswordResponse["stato"] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(changePasswordResponse['msg'] ?? 'Password cambiata con successo.')),
-        );
-
-        // Logout automatico
-        await logout();
-        Navigator.of(context).pushReplacement(MaterialPageRoute(
-          builder: (context) => const LoginScreen(), // Schermata di login
-        ));
-      } else {
-        throw Exception(changePasswordResponse['msg'] ?? 'Errore durante il cambio password.');
-      }
-    } catch (e) {
-      logger.e("Errore durante il cambio password: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore: $e')),
-      );
-    }
-  }
-}
-*/
-
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:http/io_client.dart';
-import 'package:crypto/crypto.dart';
-import 'package:logger/logger.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-
-class AuthService {
-  final String baseUrl = "https://isi-seawatch.csr.unibo.it/Sito/sito/templates/main_login/login_api.php";
-  final logger = Logger();
-
-  IOClient createIoClient() {
-    final httpClient = HttpClient()
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-    return IOClient(httpClient);
+  String _randomSalt() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes);
   }
 
-  Future<dynamic> postRequest(Map<String, String> body) async {
-    final client = createIoClient();
-    try {
-      final request = http.MultipartRequest("POST", Uri.parse(baseUrl));
-      body.forEach((key, value) {
-        request.fields[key] = value;
-      });
-      final response = await request.send().timeout(Duration(seconds: 10));
-
-      final responseBody = await response.stream.bytesToString();
-      print("Corpo della risposta del server: $responseBody");
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return jsonDecode(responseBody);
-      } else if (response.statusCode == 401) {
-        throw Exception("Non autorizzato. Verifica email e password.");
-      } else {
-        throw Exception("Errore del server: ${response.statusCode}");
-      }
-    } catch (e) {
-      logger.e("Errore durante la richiesta HTTP: $e");
-      throw Exception("Errore durante la richiesta HTTP: $e");
-    }
+  String _hashOfflinePassword({
+    required String email,
+    required String password,
+    required String salt,
+  }) {
+    final payload = '$email|$salt|$password';
+    return sha256.convert(utf8.encode(payload)).toString();
   }
 
-  String encrypt(String password, String key) {
-    final hmacSha512 = Hmac(sha512, utf8.encode(key));
-    final digest = hmacSha512.convert(utf8.encode(password));
-    return digest.toString();
+  Future<void> _cacheOfflinePassword(String email, String password) async {
+    final salt = _randomSalt();
+    final hash = _hashOfflinePassword(
+      email: email,
+      password: password,
+      salt: salt,
+    );
+
+    await _store.saveOfflineCredentials(
+      email: email,
+      salt: salt,
+      hash: hash,
+    );
   }
 
   Future<void> login(String email, String password) async {
-    try {
-      email = email.trim().toLowerCase();
-      print("Verifica email in corso...");
+    final normalizedEmail = _normalizeEmail(email);
 
-      final emailResponse = await postRequest({
-        "request": "email",
-        "email": email,
-      });
+    final loginResponse = await _api.postJson(
+      '/auth/login',
+      body: {
+        'email': normalizedEmail,
+        'password': password,
+      },
+      authRequired: false,
+    );
 
-      if (emailResponse is Map && emailResponse["state"] == true && emailResponse["Key"] != null) {
-        final key = emailResponse["Key"];
-        final encryptedPassword = encrypt(password, key);
-
-        final loginResponse = await postRequest({
-          "request": "pwd",
-          "email": email,
-          "password": encryptedPassword,
-        });
-
-        if (loginResponse is Map && loginResponse["state"] == false) {
-          throw Exception(loginResponse["msg"]);
-        }
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isAuthenticated', true);
-        await prefs.setString('userEmail', email);
-        await prefs.setString('encryptedPassword', encryptedPassword);
-        await prefs.setString('encryptionKey', key);
-
-        print("Login effettuato con successo!");
-      } else {
-        throw Exception("Errore: Nessuna chiave trovata per l'email fornita.");
-      }
-    } catch (e) {
-      print("Errore durante il login: $e");
-      rethrow;
+    final token = loginResponse['access_token']?.toString();
+    if (token == null || token.isEmpty) {
+      throw const ApiException('Login non riuscito: token non ricevuto');
     }
+
+    // Save token immediately so authenticated calls can proceed.
+    await _store.saveSession(
+      token: token,
+      userId: 0,
+      email: normalizedEmail,
+    );
+
+    final me = await _api.getJsonMap('/auth/me');
+    final userId =
+        (me['userId'] as num?)?.toInt() ?? (me['id'] as num?)?.toInt() ?? 0;
+    final emailFromToken = (me['email'] ?? normalizedEmail).toString();
+
+    String? firstName;
+    String? lastName;
+    String? avatar;
+    try {
+      final userRaw = await _api.getJsonMap('/users/me');
+      firstName = userRaw['firstName']?.toString();
+      lastName = userRaw['lastName']?.toString();
+      avatar = _normalizeOptionalUrl(userRaw['img']);
+    } catch (_) {
+      // Keep minimal profile if /users/me is temporarily unavailable.
+    }
+
+    await _store.saveSession(
+      token: token,
+      userId: userId,
+      email: emailFromToken,
+      firstName: firstName,
+      lastName: lastName,
+      avatar: avatar,
+    );
+
+    await _cacheOfflinePassword(emailFromToken, password);
+
+    // Trigger an early sync of offline changes from previous sessions.
+    await SightingsRepository.instance.syncPending();
   }
 
   Future<bool> loginOffline(String email, String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString('userEmail');
-    final savedEncryptedPassword = prefs.getString('encryptedPassword');
-    final savedKey = prefs.getString('encryptionKey');
+    final normalizedEmail = _normalizeEmail(email);
 
-    if (savedEmail == null || savedEncryptedPassword == null || savedKey == null) {
-      print("Nessun login offline disponibile.");
+    final isAuthenticated = await _store.isAuthenticated();
+    final token = await _store.getToken();
+    if (!isAuthenticated || token == null || token.isEmpty) {
       return false;
     }
 
-    final encryptedInputPassword = encrypt(password, savedKey);
-    if (email == savedEmail && encryptedInputPassword == savedEncryptedPassword) {
-      print("Login offline riuscito!");
-      return true;
+    final credentials = await _store.getOfflineCredentials();
+    if (credentials == null) {
+      return false;
     }
 
-    print("Credenziali offline non valide.");
-    return false;
+    final savedEmail = credentials['email']!;
+    final salt = credentials['salt']!;
+    final savedHash = credentials['hash']!;
+
+    if (savedEmail != normalizedEmail) {
+      return false;
+    }
+
+    final providedHash = _hashOfflinePassword(
+      email: normalizedEmail,
+      password: password,
+      salt: salt,
+    );
+
+    return providedHash == savedHash;
   }
 
   Future<void> attemptLogin(String email, String password) async {
     try {
       await login(email, password);
-      print("Login online riuscito.");
-    } catch (e) {
-      print("Errore di login online. Provo con il login offline...");
-      final offlineResult = await loginOffline(email, password);
-      if (offlineResult) {
-        print("Accesso effettuato offline.");
-      } else {
-        print("Login fallito: nessuna connessione e credenziali non valide.");
+    } on ApiException catch (error) {
+      final offlineOk = await loginOffline(email, password);
+      if (!offlineOk) {
+        throw ApiException(
+          'Login fallito. ${error.message}',
+          statusCode: error.statusCode,
+        );
+      }
+    } catch (_) {
+      final offlineOk = await loginOffline(email, password);
+      if (!offlineOk) {
+        rethrow;
       }
     }
   }
 
   Future<bool> checkSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('isAuthenticated') ?? false;
+    final isAuthenticated = await _store.isAuthenticated();
+    final token = await _store.getToken();
+
+    if (!isAuthenticated || token == null || token.isEmpty) {
+      return false;
+    }
+
+    final online = await _api.isBackendReachable();
+    if (!online) {
+      return true;
+    }
+
+    try {
+      await _api.getJsonMap('/auth/me');
+      return true;
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _store.clearSession();
+        return false;
+      }
+      return true;
+    }
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    print("Utente disconnesso");
+    await _store.clearSession();
   }
 
-  bool _isValidPassword(String password) {
-    final passwordRegex = RegExp(r'^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[!@#\$&*~]).{8,}$');
-    return passwordRegex.hasMatch(password);
-  }
-
-  Future<void> changePassword(BuildContext context, String email, String oldPassword, String newPassword) async {
-    try {
-      final keyResponse = await postRequest({
-        "request": "getKeyMob",
-        "user": email,
-      });
-
-      final keyJson = jsonDecode(keyResponse);
-      if (keyJson["key"] == null) {
-        throw Exception("Chiave non trovata.");
-      }
-
-      final key = keyJson["key"];
-      final hashedOldPassword = encrypt(oldPassword, key);
-      final hashedNewPassword = encrypt(newPassword, key);
-
-      final changePasswordResponse = await postRequest({
-        "request": "changePwdMob",
-        "user": email,
-        "old": hashedOldPassword,
-        "new": hashedNewPassword,
-      });
-
-      final changeJson = jsonDecode(changePasswordResponse);
-      if (changeJson["stato"] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(changeJson["msg"] ?? "Password cambiata con successo.")),
+  Future<UserLite?> getCurrentUser({bool refreshFromServer = true}) async {
+    if (refreshFromServer && await _api.isBackendReachable()) {
+      try {
+        final raw = await _api.getJsonMap('/users/me');
+        final user = UserLite(
+          id: (raw['id'] as num?)?.toInt() ?? 0,
+          email: (raw['email'] ?? '').toString(),
+          firstName: raw['firstName']?.toString(),
+          lastName: raw['lastName']?.toString(),
+          img: _normalizeOptionalUrl(raw['img']),
         );
-      } else {
-        throw Exception(changeJson["msg"] ?? "Errore durante il cambio password.");
+        await _store.updateCachedProfile(user);
+        return user;
+      } catch (_) {
+        // fall back below
       }
-    } catch (e) {
+    }
+
+    final cached = await _store.getCachedProfile();
+    if (cached == null) {
+      return null;
+    }
+
+    final normalized = _normalizeUserImage(cached);
+    if (normalized.img != cached.img) {
+      await _store.updateCachedProfile(normalized);
+    }
+    return normalized;
+  }
+
+  Future<UserLite> updateProfile({
+    required String firstName,
+    required String lastName,
+  }) async {
+    final online = await _api.isBackendReachable();
+
+    if (!online) {
+      final cached = await _store.getCachedProfile();
+      if (cached == null) {
+        throw const ApiException('Nessun profilo locale disponibile.');
+      }
+
+      final updated = UserLite(
+        id: cached.id,
+        email: cached.email,
+        firstName: firstName,
+        lastName: lastName,
+        img: cached.img,
+      );
+
+      await _store.updateCachedProfile(updated);
+      return updated;
+    }
+
+    await _api.putJson(
+      '/users/me',
+      body: {
+        'firstName': firstName,
+        'lastName': lastName,
+      },
+    );
+
+    final refreshed = await getCurrentUser(refreshFromServer: true);
+    if (refreshed == null) {
+      throw const ApiException('Errore aggiornando il profilo utente.');
+    }
+
+    return refreshed;
+  }
+
+  Future<String> uploadAvatar(String filePath) async {
+    final online = await _api.isBackendReachable();
+    if (!online) {
+      throw const ApiException('Upload avatar disponibile solo online.');
+    }
+
+    const fieldNames = ['file', 'avatar', 'image'];
+    Map<String, dynamic>? raw;
+    ApiException? lastError;
+
+    for (final fieldName in fieldNames) {
+      try {
+        raw = await _api.uploadFile(
+          path: '/users/upload-avatar',
+          fieldName: fieldName,
+          filePath: filePath,
+        );
+        break;
+      } on ApiException catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (raw == null) {
+      throw lastError ?? const ApiException('Upload avatar fallito.');
+    }
+
+    final imgUrl = _normalizeOptionalUrl(raw['imgUrl'] ?? raw['img']);
+    if (imgUrl == null || imgUrl.isEmpty) {
+      throw const ApiException('Upload avatar fallito.');
+    }
+
+    final current = await _store.getCachedProfile();
+    if (current != null) {
+      await _store.updateCachedProfile(
+        UserLite(
+          id: current.id,
+          email: current.email,
+          firstName: current.firstName,
+          lastName: current.lastName,
+          img: imgUrl,
+        ),
+      );
+    }
+
+    return imgUrl;
+  }
+
+  Future<void> changePasswordDirect({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final online = await _api.isBackendReachable();
+    if (!online) {
+      throw const ApiException('Cambio password disponibile solo online.');
+    }
+
+    await _api.putJson(
+      '/users/change-password',
+      body: {
+        'oldPassword': oldPassword,
+        'newPassword': newPassword,
+      },
+    );
+  }
+
+  Future<void> changePassword(
+    BuildContext context,
+    String email,
+    String oldPassword,
+    String newPassword,
+  ) async {
+    try {
+      await changePasswordDirect(
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      );
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore: $e')),
+        const SnackBar(content: Text('Password aggiornata con successo.')),
+      );
+    } on ApiException catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
       );
     }
   }
