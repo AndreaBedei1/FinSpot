@@ -468,7 +468,7 @@ class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
-                        initialValue: _selectedAnimalId,
+                        value: _selectedAnimalId,
                         isExpanded: true,
                         menuMaxHeight: 280,
                         decoration: const InputDecoration(
@@ -498,7 +498,7 @@ class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
-                        initialValue: _selectedSpeciesId,
+                        value: _selectedSpeciesId,
                         isExpanded: true,
                         menuMaxHeight: 280,
                         decoration: const InputDecoration(
@@ -564,7 +564,7 @@ class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        initialValue: _selectedSea,
+                        value: _selectedSea,
                         isExpanded: true,
                         menuMaxHeight: 280,
                         decoration: const InputDecoration(
@@ -582,7 +582,7 @@ class _NuovoAvvistamentoScreenState extends State<NuovoAvvistamentoScreen> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        initialValue: _selectedWind,
+                        value: _selectedWind,
                         isExpanded: true,
                         menuMaxHeight: 280,
                         decoration: const InputDecoration(

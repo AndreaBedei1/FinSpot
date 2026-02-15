@@ -178,11 +178,11 @@ class _HomepageScreenState extends State<HomepageScreen> {
       children: [
         Icon(icon, size: 14, color: theme.colorScheme.secondary),
         const SizedBox(width: 6),
-        Expanded(
+              Expanded(
           child: Text(
             text,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              color: theme.colorScheme.onSurface.withOpacity(0.75),
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -201,8 +201,8 @@ class _HomepageScreenState extends State<HomepageScreen> {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 260),
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withValues(alpha: 0.95),
+          decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withOpacity(0.95),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.black12),
           boxShadow: const [

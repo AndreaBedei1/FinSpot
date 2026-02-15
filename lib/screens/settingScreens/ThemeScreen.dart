@@ -26,7 +26,7 @@ class ThemeScreen extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              theme.colorScheme.primary.withValues(alpha: 0.1),
+              theme.colorScheme.primary.withOpacity(0.1),
               theme.colorScheme.surface,
             ],
             begin: Alignment.topCenter,
@@ -69,7 +69,7 @@ class ThemeScreen extends StatelessWidget {
                         onChanged: (bool value) {
                           themeProvider.toggleTheme();
                         },
-                        activeThumbColor: theme.colorScheme.secondary,
+                        activeColor: theme.colorScheme.secondary,
                       ),
                     ],
                   ),

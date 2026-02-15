@@ -53,5 +53,11 @@
 	<string>SeaWatch puo salvare immagini per la gestione degli avvistamenti.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>SeaWatch usa la posizione per compilare latitudine e longitudine degli avvistamenti.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SeaWatch richiede l'accesso alla rete locale per scoprire e comunicare con servizi locali (es. dispositivi e stampanti) se necessario.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 </dict>
 </plist>

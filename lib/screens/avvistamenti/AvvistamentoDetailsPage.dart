@@ -295,7 +295,7 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int>(
-                      initialValue: selectedAnimalId,
+                      value: selectedAnimalId,
                       isExpanded: true,
                       menuMaxHeight: 280,
                       decoration: const InputDecoration(
@@ -334,7 +334,7 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int>(
-                      initialValue: selectedSpeciesId,
+                      value: selectedSpeciesId,
                       isExpanded: true,
                       menuMaxHeight: 280,
                       decoration: const InputDecoration(
@@ -359,7 +359,7 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      initialValue: selectedSea,
+                      value: selectedSea,
                       isExpanded: true,
                       menuMaxHeight: 280,
                       decoration: const InputDecoration(
@@ -384,7 +384,7 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      initialValue: selectedWind,
+                      value: selectedWind,
                       isExpanded: true,
                       menuMaxHeight: 280,
                       decoration: const InputDecoration(
@@ -898,7 +898,7 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                               color: Theme.of(context)
                                   .colorScheme
                                   .outline
-                                  .withValues(alpha: 0.4),
+                                  .withOpacity(0.4),
                             ),
                             visualDensity: VisualDensity.compact,
                           ),
