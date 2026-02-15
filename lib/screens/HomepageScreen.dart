@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_popup/flutter_map_marker_popup.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:seawatch/models/avvistamento.dart';
@@ -15,6 +16,7 @@ class HomepageScreen extends StatefulWidget {
 
 class _HomepageScreenState extends State<HomepageScreen> {
   final _repository = SightingsRepository.instance;
+  final PopupController _popupController = PopupController();
 
   bool _loading = true;
   String? _error;
@@ -71,30 +73,46 @@ class _HomepageScreenState extends State<HomepageScreen> {
     return DateFormat('dd/MM/yyyy HH:mm').format(date.toLocal());
   }
 
+  DateTime _parseDateOrEpoch(String iso) {
+    return DateTime.tryParse(iso)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  List<Avvistamento> _sortByDateDesc(List<Avvistamento> sightings) {
+    final copy = [...sightings];
+    copy.sort((a, b) =>
+        _parseDateOrEpoch(b.data).compareTo(_parseDateOrEpoch(a.data)));
+    return copy;
+  }
+
+  String _displayName(Avvistamento sighting) {
+    return sighting.specie ?? sighting.animale;
+  }
+
   Color _markerColorForAnimal(String animal) {
     final normalized = animal.trim().toLowerCase();
     if (normalized.contains('balen')) {
-      return const Color(0xFFA855F7); // violet
+      return const Color(0xFFA855F7);
     }
     if (normalized.contains('delfin')) {
-      return const Color(0xFF0EA5E9); // sky blue
+      return const Color(0xFF0EA5E9);
     }
     if (normalized.contains('foca')) {
-      return const Color(0xFF64748B); // slate gray
+      return const Color(0xFF64748B);
     }
     if (normalized.contains('razza')) {
-      return const Color(0xFF14B8A6); // teal
+      return const Color(0xFF14B8A6);
     }
     if (normalized.contains('squal')) {
-      return const Color(0xFFEF4444); // red
+      return const Color(0xFFEF4444);
     }
     if (normalized.contains('tartarug')) {
-      return const Color(0xFF10B981); // emerald green
+      return const Color(0xFF10B981);
     }
     if (normalized.contains('tonn')) {
-      return const Color(0xFFF59E0B); // amber
+      return const Color(0xFFF59E0B);
     }
-    return const Color(0xFF6B7280); // gray default
+    return const Color(0xFF6B7280);
   }
 
   Future<void> _openSightingDetail(Avvistamento sighting) async {
@@ -110,42 +128,157 @@ class _HomepageScreenState extends State<HomepageScreen> {
     await _load();
   }
 
-  Future<void> _showMarkerDetails(Avvistamento sighting) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  sighting.specie ?? sighting.animale,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+  Widget _markerPin(Color color) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(blurRadius: 10, color: Colors.black26)],
+          ),
+        ),
+        Icon(Icons.location_on, color: color, size: 40),
+        const Positioned(
+          top: 11,
+          child: CircleAvatar(radius: 5, backgroundColor: Colors.white),
+        ),
+      ],
+    );
+  }
+
+  List<Marker> _buildMarkers(List<Avvistamento> items) {
+    return items.map((sighting) {
+      final label = _displayName(sighting);
+      return Marker(
+        key: ValueKey<int>(sighting.id),
+        point: LatLng(sighting.latitudine, sighting.longitudine),
+        width: 44,
+        height: 44,
+        rotate: false,
+        alignment: Alignment.topCenter,
+        child: Semantics(
+          button: true,
+          label: 'Marker ${sighting.animale}',
+          child: _markerPin(_markerColorForAnimal(label)),
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _popupInfoRow({
+    required BuildContext context,
+    required IconData icon,
+    required String text,
+  }) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: theme.colorScheme.secondary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _compactPopup(BuildContext context, Avvistamento sighting) {
+    final theme = Theme.of(context);
+    final specie = _displayName(sighting);
+    final color = _markerColorForAnimal(specie);
+    final data = _formatDate(sighting.data);
+    final esemplari = sighting.numeroEsemplari.toString();
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.black12),
+          boxShadow: const [
+            BoxShadow(
+                blurRadius: 8, color: Colors.black26, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.location_on, color: color, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      specie,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text('Animale: ${sighting.animale}'),
-                Text('Data: ${_formatDate(sighting.data)}'),
-                const SizedBox(height: 12),
-                FilledButton.icon(
+                  InkWell(
+                    onTap: () => _popupController.hideAllPopups(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.close, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              _popupInfoRow(
+                context: context,
+                icon: Icons.calendar_today,
+                text: data,
+              ),
+              const SizedBox(height: 4),
+              _popupInfoRow(
+                context: context,
+                icon: Icons.pets,
+                text: 'Esemplari: $esemplari',
+              ),
+              const SizedBox(height: 4),
+              _popupInfoRow(
+                context: context,
+                icon: Icons.gps_fixed,
+                text:
+                    '${sighting.latitudine.toStringAsFixed(4)}, ${sighting.longitudine.toStringAsFixed(4)}',
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Dettagli'),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   onPressed: () {
-                    Navigator.pop(sheetContext);
+                    _popupController.hideAllPopups();
                     _openSightingDetail(sighting);
                   },
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Apri dettaglio'),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -210,30 +343,9 @@ class _HomepageScreenState extends State<HomepageScreen> {
       );
     }
 
-    final markers = _sightings.map((s) {
-      final markerColor = _markerColorForAnimal(s.animale);
-      return Marker(
-        point: LatLng(s.latitudine, s.longitudine),
-        width: 42,
-        height: 42,
-        child: Semantics(
-          button: true,
-          label: 'Marker ${s.animale}',
-          child: GestureDetector(
-            onTap: () => _showMarkerDetails(s),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(Icons.location_on, color: markerColor, size: 36),
-                const Icon(Icons.circle, color: Colors.white, size: 11),
-              ],
-            ),
-          ),
-        ),
-      );
-    }).toList();
-
-    final recent = _sightings.take(5).toList();
+    final sortedSightings = _sortByDateDesc(_sightings);
+    final recent = sortedSightings.take(5).toList();
+    final markers = _buildMarkers(sortedSightings);
 
     return SafeArea(
       child: ColoredBox(
@@ -267,24 +379,52 @@ class _HomepageScreenState extends State<HomepageScreen> {
               ),
               const SizedBox(height: 10),
               SizedBox(
-                height: 280,
+                height: 330,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: FlutterMap(
-                    options: MapOptions(
-                      initialCenter: LatLng(
-                        _sightings.first.latitudine,
-                        _sightings.first.longitudine,
-                      ),
-                      initialZoom: 9.5,
-                    ),
+                  child: Stack(
                     children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.seawatch',
+                      FlutterMap(
+                        options: MapOptions(
+                          initialCenter: LatLng(
+                            sortedSightings.first.latitudine,
+                            sortedSightings.first.longitudine,
+                          ),
+                          initialZoom: 9.5,
+                          onTap: (_, __) => _popupController.hideAllPopups(),
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate:
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.example.seawatch',
+                          ),
+                          PopupMarkerLayerWidget(
+                            options: PopupMarkerLayerOptions(
+                              popupController: _popupController,
+                              markers: markers,
+                              markerTapBehavior:
+                                  MarkerTapBehavior.togglePopup(),
+                              popupDisplayOptions: PopupDisplayOptions(
+                                snap: PopupSnap.markerTop,
+                                builder: (popupContext, marker) {
+                                  final key = marker.key;
+                                  if (key is ValueKey<int>) {
+                                    final id = key.value;
+                                    final sighting = sortedSightings.firstWhere(
+                                      (item) => item.id == id,
+                                      orElse: () => sortedSightings.first,
+                                    );
+                                    return _compactPopup(
+                                        popupContext, sighting);
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      MarkerLayer(markers: markers),
                     ],
                   ),
                 ),
@@ -298,8 +438,11 @@ class _HomepageScreenState extends State<HomepageScreen> {
               ...recent.map(
                 (sighting) => Card(
                   child: ListTile(
-                    leading: const Icon(Icons.pets),
-                    title: Text(sighting.specie ?? sighting.animale),
+                    leading: Icon(
+                      Icons.location_on,
+                      color: _markerColorForAnimal(_displayName(sighting)),
+                    ),
+                    title: Text(_displayName(sighting)),
                     subtitle: Text(
                       '${_formatDate(sighting.data)}\n'
                       '${sighting.latitudine.toStringAsFixed(5)}, '

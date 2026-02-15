@@ -1,9 +1,11 @@
 class AppConfig {
   static const String _apiBaseFromEnv = String.fromEnvironment('API_BASE');
-  static const String _legacyApiBaseFromEnv = String.fromEnvironment('API_BASE_URL');
+  static const String _legacyApiBaseFromEnv =
+      String.fromEnvironment('API_BASE_URL');
 
   static const String _filesBaseFromEnv = String.fromEnvironment('FILES_BASE');
-  static const String _legacyFilesBaseFromEnv = String.fromEnvironment('FILES_BASE_URL');
+  static const String _legacyFilesBaseFromEnv =
+      String.fromEnvironment('FILES_BASE_URL');
 
   static const String _defaultApiBase = 'https://isi-seawatch.csr.unibo.it/api';
   static const String _defaultFilesBase = 'https://isi-seawatch.csr.unibo.it';
@@ -14,7 +16,8 @@ class AppConfig {
       );
 
   static String get filesBaseUrl => _normalizeBaseUrl(
-        _firstNonEmpty(_filesBaseFromEnv, _legacyFilesBaseFromEnv, _defaultFilesBase),
+        _firstNonEmpty(
+            _filesBaseFromEnv, _legacyFilesBaseFromEnv, _defaultFilesBase),
         fallback: _defaultFilesBase,
       );
 

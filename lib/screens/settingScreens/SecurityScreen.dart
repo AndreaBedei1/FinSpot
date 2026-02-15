@@ -40,7 +40,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
     if (newPassword.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La nuova password deve avere almeno 6 caratteri.')),
+        const SnackBar(
+            content: Text('La nuova password deve avere almeno 6 caratteri.')),
       );
       return;
     }
@@ -67,7 +68,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password cambiata. Effettua di nuovo il login.')),
+        const SnackBar(
+            content: Text('Password cambiata. Effettua di nuovo il login.')),
       );
 
       await _authService.logout();

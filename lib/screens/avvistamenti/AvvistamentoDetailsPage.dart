@@ -637,197 +637,6 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
     }
   }
 
-  Future<void> _createOrEditAnnotation({
-    required SightingImageItem image,
-    AnnotationItem? existing,
-  }) async {
-    final sighting = _sighting;
-    if (sighting == null) {
-      return;
-    }
-
-    final tlX = TextEditingController(text: existing?.tlX.toString() ?? '');
-    final tlY = TextEditingController(text: existing?.tlY.toString() ?? '');
-    final brX = TextEditingController(text: existing?.brX.toString() ?? '');
-    final brY = TextEditingController(text: existing?.brY.toString() ?? '');
-    final specimenName =
-        TextEditingController(text: existing?.specimenName ?? '');
-
-    final submit = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(
-              existing == null ? 'Nuova annotazione' : 'Modifica annotazione'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: specimenName,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome esemplare',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: tlX,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'tl_x',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: tlY,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'tl_y',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: brX,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'br_x',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: brY,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'br_y',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Annulla'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Salva'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (submit != true) {
-      return;
-    }
-
-    final parsedTlX = double.tryParse(tlX.text.trim());
-    final parsedTlY = double.tryParse(tlY.text.trim());
-    final parsedBrX = double.tryParse(brX.text.trim());
-    final parsedBrY = double.tryParse(brY.text.trim());
-
-    if (parsedTlX == null ||
-        parsedTlY == null ||
-        parsedBrX == null ||
-        parsedBrY == null) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Coordinate annotazione non valide.')),
-      );
-      return;
-    }
-
-    setState(() {
-      _working = true;
-    });
-
-    try {
-      if (existing == null) {
-        await _repository.addAnnotation(
-          sightingId: sighting.id,
-          imageId: image.id,
-          tlX: parsedTlX,
-          tlY: parsedTlY,
-          brX: parsedBrX,
-          brY: parsedBrY,
-          specimenName: specimenName.text.trim().isEmpty
-              ? null
-              : specimenName.text.trim(),
-        );
-      } else {
-        await _repository.updateAnnotation(
-          sightingId: sighting.id,
-          annotationId: existing.id,
-          tlX: parsedTlX,
-          tlY: parsedTlY,
-          brX: parsedBrX,
-          brY: parsedBrY,
-          specimenName: specimenName.text.trim().isEmpty
-              ? null
-              : specimenName.text.trim(),
-        );
-      }
-
-      await _load();
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore annotazione: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _working = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _deleteAnnotation(int annotationId) async {
-    final sighting = _sighting;
-    if (sighting == null) {
-      return;
-    }
-
-    setState(() {
-      _working = true;
-    });
-
-    try {
-      await _repository.deleteAnnotation(
-        sightingId: sighting.id,
-        annotationId: annotationId,
-      );
-      await _load();
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore eliminazione annotazione: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _working = false;
-        });
-      }
-    }
-  }
-
   Future<void> _runRecognition() async {
     final sighting = _sighting;
     if (sighting == null || sighting.id <= 0) {
@@ -989,6 +798,39 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
     return const ColoredBox(
       color: Colors.black12,
       child: Icon(Icons.image_not_supported_outlined),
+    );
+  }
+
+  ImageProvider? _imageProviderForPreview(SightingImageItem image) {
+    if (image.pendingUpload &&
+        image.localPath != null &&
+        File(image.localPath!).existsSync()) {
+      return FileImage(File(image.localPath!));
+    }
+
+    if (image.url.startsWith('http://') || image.url.startsWith('https://')) {
+      return NetworkImage(image.url);
+    }
+
+    if (image.url.startsWith('/')) {
+      return NetworkImage(AppConfig.normalizeUrl(image.url));
+    }
+
+    final file = File(image.url);
+    if (file.existsSync()) {
+      return FileImage(file);
+    }
+
+    return null;
+  }
+
+  Future<void> _openImagePreview(SightingImageItem image) async {
+    final provider = _imageProviderForPreview(image);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ImagePreviewScreen(imageProvider: provider),
+        fullscreenDialog: true,
+      ),
     );
   }
 
@@ -1164,7 +1006,7 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Immagini e annotazioni',
+                      'Immagini',
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
@@ -1195,7 +1037,23 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                           width: double.infinity,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: _buildImage(image),
+                            child: GestureDetector(
+                              onTap: () => _openImagePreview(image),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  _buildImage(image),
+                                  const Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: Icon(
+                                      Icons.zoom_in,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -1203,15 +1061,6 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                           children: [
                             Text('Annotazioni: ${image.annotations.length}'),
                             const Spacer(),
-                            if (_isOwner)
-                              IconButton(
-                                onPressed: image.pendingUpload
-                                    ? null
-                                    : () =>
-                                        _createOrEditAnnotation(image: image),
-                                icon: const Icon(Icons.add_comment_outlined),
-                                tooltip: 'Aggiungi annotazione',
-                              ),
                             if (_isOwner)
                               IconButton(
                                 onPressed: () => _deleteImage(image),
@@ -1237,22 +1086,6 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
                                       '(${ann.tlX}, ${ann.tlY})-(${ann.brX}, ${ann.brY})',
                                     ),
                                   ),
-                                  if (_isOwner)
-                                    IconButton(
-                                      onPressed: () => _createOrEditAnnotation(
-                                        image: image,
-                                        existing: ann,
-                                      ),
-                                      icon: const Icon(Icons.edit_outlined),
-                                      tooltip: 'Modifica annotazione',
-                                    ),
-                                  if (_isOwner)
-                                    IconButton(
-                                      onPressed: () =>
-                                          _deleteAnnotation(ann.id),
-                                      icon: const Icon(Icons.delete_outline),
-                                      tooltip: 'Elimina annotazione',
-                                    ),
                                 ],
                               ),
                             ),
@@ -1265,12 +1098,45 @@ class _AvvistamentoDetailsPageState extends State<AvvistamentoDetailsPage> {
               const SizedBox(height: 30),
               if (!_isOwner)
                 const Text(
-                  'Solo il proprietario puo modificare avvistamento, immagini e annotazioni.',
+                  'Solo il proprietario puo modificare avvistamento e immagini.',
                   style: TextStyle(fontStyle: FontStyle.italic),
                 ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ImagePreviewScreen extends StatelessWidget {
+  const _ImagePreviewScreen({required this.imageProvider});
+
+  final ImageProvider? imageProvider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Anteprima immagine'),
+      ),
+      body: Center(
+        child: imageProvider == null
+            ? const Text(
+                'Anteprima non disponibile.',
+                style: TextStyle(color: Colors.white),
+              )
+            : InteractiveViewer(
+                maxScale: 6,
+                minScale: 1,
+                child: Image(
+                  image: imageProvider!,
+                  fit: BoxFit.contain,
+                ),
+              ),
       ),
     );
   }

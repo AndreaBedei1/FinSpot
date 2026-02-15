@@ -32,7 +32,8 @@ class _AvvistamentiScreenState extends State<AvvistamentiScreen> {
     });
 
     try {
-      final sightings = await _repository.getSightings(forceRefresh: forceRefresh);
+      final sightings =
+          await _repository.getSightings(forceRefresh: forceRefresh);
       if (!mounted) {
         return;
       }
@@ -168,7 +169,8 @@ class _AvvistamentiScreenState extends State<AvvistamentiScreen> {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => AvvistamentoDetailsPage(avvistamento: sighting),
+                  builder: (_) =>
+                      AvvistamentoDetailsPage(avvistamento: sighting),
                 ),
               );
 

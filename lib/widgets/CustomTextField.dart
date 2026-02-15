@@ -5,7 +5,8 @@ class CustomTextField extends StatelessWidget {
   final bool isPassword;
   final TextEditingController controller;
 
-  const CustomTextField({super.key, 
+  const CustomTextField({
+    super.key,
     required this.label,
     this.isPassword = false,
     required this.controller,

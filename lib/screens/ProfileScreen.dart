@@ -111,7 +111,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     CircleAvatar(
                       radius: 44,
-                      backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                      backgroundImage:
+                          avatarUrl != null ? NetworkImage(avatarUrl) : null,
                       child: avatarUrl == null
                           ? const Icon(Icons.person, size: 44)
                           : null,
@@ -135,7 +136,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () async {
                 final updated = await Navigator.push<bool>(
                   context,
-                  MaterialPageRoute(builder: (_) => const ProfileChangeScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const ProfileChangeScreen()),
                 );
 
                 if (updated == true) {

@@ -80,8 +80,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final inputFill = isDark ? const Color(0xFF2B313A) : Colors.grey.shade200;
+    final inputText = isDark ? Colors.white : const Color(0xFF111827);
+    final inputHint = isDark ? Colors.white70 : Colors.grey.shade700;
+    final inputLabel = isDark ? Colors.white : const Color(0xFF374151);
+    final inputIcon = isDark ? Colors.white70 : Colors.grey.shade700;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Registrazione')),
+      appBar: AppBar(
+        title: const Text('Registrazione'),
+        backgroundColor: Colors.orange,
+        foregroundColor: Colors.white,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -90,13 +102,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               key: _formKey,
               child: Column(
                 children: [
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _nomeController,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.givenName],
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: inputText),
+                    cursorColor: Colors.orange,
+                    decoration: InputDecoration(
+                      hintText: 'Nome',
                       labelText: 'Nome',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(color: inputHint),
+                      labelStyle: TextStyle(color: inputLabel),
+                      prefixIcon: Icon(Icons.person_outline, color: inputIcon),
+                      filled: true,
+                      fillColor: inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     validator: (value) {
                       if ((value ?? '').trim().isEmpty) {
@@ -105,14 +128,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _cognomeController,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.familyName],
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: inputText),
+                    cursorColor: Colors.orange,
+                    decoration: InputDecoration(
+                      hintText: 'Cognome',
                       labelText: 'Cognome',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(color: inputHint),
+                      labelStyle: TextStyle(color: inputLabel),
+                      prefixIcon: Icon(Icons.badge_outlined, color: inputIcon),
+                      filled: true,
+                      fillColor: inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     validator: (value) {
                       if ((value ?? '').trim().isEmpty) {
@@ -121,15 +154,28 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.username, AutofillHints.email],
-                    decoration: const InputDecoration(
+                    autofillHints: const [
+                      AutofillHints.username,
+                      AutofillHints.email
+                    ],
+                    style: TextStyle(color: inputText),
+                    cursorColor: Colors.orange,
+                    decoration: InputDecoration(
+                      hintText: 'Email',
                       labelText: 'Email',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(color: inputHint),
+                      labelStyle: TextStyle(color: inputLabel),
+                      prefixIcon: Icon(Icons.email_outlined, color: inputIcon),
+                      filled: true,
+                      fillColor: inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     validator: (value) {
                       final trimmed = value?.trim() ?? '';
@@ -142,7 +188,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
                     obscureText: true,
@@ -150,9 +196,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     autofillHints: const [AutofillHints.newPassword],
                     autocorrect: false,
                     enableSuggestions: false,
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: inputText),
+                    cursorColor: Colors.orange,
+                    decoration: InputDecoration(
+                      hintText: 'Password',
                       labelText: 'Password',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(color: inputHint),
+                      labelStyle: TextStyle(color: inputLabel),
+                      prefixIcon: Icon(Icons.lock_outline, color: inputIcon),
+                      filled: true,
+                      fillColor: inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     validator: (value) {
                       if ((value ?? '').length < 6) {
@@ -161,7 +217,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: true,
@@ -169,9 +225,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     autofillHints: const [AutofillHints.newPassword],
                     autocorrect: false,
                     enableSuggestions: false,
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: inputText),
+                    cursorColor: Colors.orange,
+                    decoration: InputDecoration(
+                      hintText: 'Conferma password',
                       labelText: 'Conferma Password',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(color: inputHint),
+                      labelStyle: TextStyle(color: inputLabel),
+                      prefixIcon:
+                          Icon(Icons.lock_reset_outlined, color: inputIcon),
+                      filled: true,
+                      fillColor: inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     validator: (value) {
                       if (value != _passwordController.text) {
@@ -180,18 +247,27 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _isSubmitting ? null : _register,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        minimumSize: const Size(double.infinity, 56),
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(50),
+                        ),
+                      ),
                       child: _isSubmitting
                           ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Crea account'),
+                          : const Text('Crea nuovo account'),
                     ),
                   ),
                 ],
