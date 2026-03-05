@@ -92,14 +92,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   const SizedBox(height: 40),
                   Semantics(
-                    label: 'Logo SeaWatch',
+                    label: 'Logo FinSpot',
                     image: true,
-                    child: Image.asset('assets/images/FinSpot_pos.png',
-                        height: 120),
+                    child: Image.asset('assets/images/logo.png', height: 120),
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'SeaWatch Mobile',
+                    'FinSpot',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),

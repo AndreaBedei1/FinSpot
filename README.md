@@ -72,8 +72,8 @@ Valori supportati:
 - `FILES_BASE` (o legacy `FILES_BASE_URL`)
 
 Default nel codice:
-- API: `https://isi-seawatch.csr.unibo.it/api`
-- Files: `https://isi-seawatch.csr.unibo.it`
+- API: `https://isi-finspot.csr.unibo.it/api`
+- Files: `https://isi-finspot.csr.unibo.it`
 
 Esempio:
 

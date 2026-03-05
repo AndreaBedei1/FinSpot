@@ -178,7 +178,7 @@ class _HomepageScreenState extends State<HomepageScreen> {
       children: [
         Icon(icon, size: 14, color: theme.colorScheme.secondary),
         const SizedBox(width: 6),
-              Expanded(
+        Expanded(
           child: Text(
             text,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -201,7 +201,7 @@ class _HomepageScreenState extends State<HomepageScreen> {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 260),
       child: DecoratedBox(
-          decoration: BoxDecoration(
+        decoration: BoxDecoration(
           color: theme.colorScheme.surface.withOpacity(0.95),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.black12),

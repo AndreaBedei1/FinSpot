@@ -7,8 +7,8 @@ class AppConfig {
   static const String _legacyFilesBaseFromEnv =
       String.fromEnvironment('FILES_BASE_URL');
 
-  static const String _defaultApiBase = 'https://isi-seawatch.csr.unibo.it/api';
-  static const String _defaultFilesBase = 'https://isi-seawatch.csr.unibo.it';
+  static const String _defaultApiBase = 'https://isi-finspot.csr.unibo.it/api';
+  static const String _defaultFilesBase = 'https://isi-finspot.csr.unibo.it';
 
   static String get apiBaseUrl => _normalizeBaseUrl(
         _firstNonEmpty(_apiBaseFromEnv, _legacyApiBaseFromEnv, _defaultApiBase),

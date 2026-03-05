@@ -4,6 +4,7 @@ import 'package:seawatch/screens/ProfileScreen.dart';
 import 'package:seawatch/screens/StatisticsScreen.dart';
 import 'package:seawatch/screens/avvistamenti/AvvistamentiScreen.dart';
 import 'package:seawatch/screens/settingScreens/SettingsScreen.dart';
+import 'package:seawatch/widgets/chatbot_overlay.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -28,9 +29,15 @@ class _MainScreenState extends State<MainScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+          const ChatbotOverlay(),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -38,7 +45,7 @@ class _MainScreenState extends State<MainScreen> {
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: theme.colorScheme.onSurface.withOpacity(0.14),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.14),
               ),
             ),
           ),
@@ -48,7 +55,7 @@ class _MainScreenState extends State<MainScreen> {
             currentIndex: _currentIndex,
             selectedItemColor: Colors.orange,
             unselectedItemColor:
-              theme.colorScheme.onSurface.withOpacity(0.65),
+                theme.colorScheme.onSurface.withValues(alpha: 0.65),
             selectedLabelStyle:
                 const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
             unselectedLabelStyle: const TextStyle(fontSize: 12),

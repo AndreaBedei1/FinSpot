@@ -82,7 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final displayName =
         '${user.firstName ?? ''} ${user.lastName ?? ''}'.trim().isEmpty
-            ? 'Utente SeaWatch'
+            ? 'Utente FinSpot'
             : '${user.firstName ?? ''} ${user.lastName ?? ''}'.trim();
     final avatarUrl = user.img == null || user.img!.isEmpty
         ? null

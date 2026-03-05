@@ -9,8 +9,8 @@ Obiettivo:
 
 L'app usa endpoint relativi (`/auth`, `/users`, `/sightings`, ...), costruiti a partire da:
 - `API_BASE` (dart-define, con compatibilita anche `API_BASE_URL`)
-- default nel codice: `https://isi-seawatch.csr.unibo.it/api`
-- base file statici/immagini: `FILES_BASE` (compatibilita anche `FILES_BASE_URL`, default `https://isi-seawatch.csr.unibo.it`)
+- default nel codice: `https://isi-finspot.csr.unibo.it/api`
+- base file statici/immagini: `FILES_BASE` (compatibilita anche `FILES_BASE_URL`, default `https://isi-finspot.csr.unibo.it`)
 
 Se vuoi un prefisso dedicato backend, usa:
 - `API_BASE=https://tuo-dominio.tld/api`

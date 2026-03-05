@@ -60,7 +60,7 @@ final ThemeData lightTheme = ThemeData(
   primaryColor: Colors.white,
   colorScheme: _lightScheme,
   scaffoldBackgroundColor: _lightScheme.surface,
-  bottomAppBarTheme: const BottomAppBarTheme(color: Colors.white),
+  bottomAppBarTheme: const BottomAppBarThemeData(color: Colors.white),
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
       backgroundColor: _lightScheme.primary,
@@ -89,8 +89,7 @@ final ThemeData lightTheme = ThemeData(
     filled: true,
     fillColor: Colors.white,
     enabledBorder: OutlineInputBorder(
-      borderSide:
-          BorderSide(color: _lightScheme.primary.withOpacity(0.32)),
+      borderSide: BorderSide(color: _lightScheme.primary.withOpacity(0.32)),
     ),
     focusedBorder: OutlineInputBorder(
       borderSide: BorderSide(color: _lightScheme.primary, width: 1.6),
@@ -104,8 +103,8 @@ final ThemeData darkTheme = ThemeData(
   primaryColor: const Color.fromARGB(255, 89, 88, 88),
   colorScheme: _darkScheme,
   scaffoldBackgroundColor: const Color(0xFF14191F),
-    bottomAppBarTheme:
-      const BottomAppBarTheme(color: Color.fromARGB(255, 50, 54, 60)),
+  bottomAppBarTheme:
+      const BottomAppBarThemeData(color: Color.fromARGB(255, 50, 54, 60)),
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
       backgroundColor: _darkScheme.primary,
@@ -134,8 +133,7 @@ final ThemeData darkTheme = ThemeData(
     filled: true,
     fillColor: const Color(0xFF1F242B),
     enabledBorder: OutlineInputBorder(
-      borderSide:
-          BorderSide(color: _darkScheme.primary.withOpacity(0.45)),
+      borderSide: BorderSide(color: _darkScheme.primary.withOpacity(0.45)),
     ),
     focusedBorder: OutlineInputBorder(
       borderSide: BorderSide(color: _darkScheme.primary, width: 1.6),

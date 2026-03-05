@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Seawatch</string>
+	<string>FinSpot</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>seawatch</string>
+	<string>FinSpot</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -46,15 +46,15 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>SeaWatch usa la fotocamera per caricare immagini degli avvistamenti.</string>
+	<string>FinSpot usa la fotocamera per caricare immagini degli avvistamenti.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SeaWatch usa la galleria per selezionare immagini da allegare agli avvistamenti.</string>
+	<string>FinSpot usa la galleria per selezionare immagini da allegare agli avvistamenti.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>SeaWatch puo salvare immagini per la gestione degli avvistamenti.</string>
+	<string>FinSpot puo salvare immagini per la gestione degli avvistamenti.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>SeaWatch usa la posizione per compilare latitudine e longitudine degli avvistamenti.</string>
+	<string>FinSpot usa la posizione per compilare latitudine e longitudine degli avvistamenti.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>SeaWatch richiede l'accesso alla rete locale per scoprire e comunicare con servizi locali (es. dispositivi e stampanti) se necessario.</string>
+	<string>FinSpot richiede l'accesso alla rete locale per scoprire e comunicare con servizi locali (es. dispositivi e stampanti) se necessario.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>
